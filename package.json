@@ -1,0 +1,26 @@
+{
+  "name": "tileflow",
+  "private": true,
+  "workspaces": [
+    "packages/geometry",
+    "packages/worker",
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:client": "cd client && npm run dev",
+    "dev:server": "cd server && npm run dev",
+    "build": "npm run build:geometry && npm run build:client && npm run build:server",
+    "build:geometry": "cd packages/geometry && npm run build",
+    "build:client": "cd client && npm run build",
+    "build:server": "cd server && npm run build",
+    "db:push": "cd server && npm run db:push",
+    "db:generate": "cd server && npm run db:generate",
+    "install:all": "npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "typescript": "^5.4.0"
+  }
+}
