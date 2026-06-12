@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import { api } from '../../api/client';
+import { systemForUnit } from '../../utils/measurements';
 
 export default function ProjectPanel() {
   const projectId = useTileFlowStore((s) => s.projectId);
@@ -8,7 +9,7 @@ export default function ProjectPanel() {
   const setProjectId = useTileFlowStore((s) => s.setProjectId);
   const setProjectName = useTileFlowStore((s) => s.setProjectName);
   const room = useTileFlowStore((s) => s.room);
-  const unit = useTileFlowStore((s) => s.unit);
+  const system = useTileFlowStore((s) => s.system);
   const tileConfig = useTileFlowStore((s) => s.tileConfig);
   const optimizationConfig = useTileFlowStore((s) => s.optimizationConfig);
   const layout = useTileFlowStore((s) => s.layout);
@@ -22,7 +23,12 @@ export default function ProjectPanel() {
     try {
       const data = {
         name: projectName,
-        room: { width: room.width, height: room.height, unit },
+        // Persist a representative unit for the chosen system (dims are in mm)
+        room: {
+          width: room.width,
+          height: room.height,
+          unit: system === 'imperial' ? 'feet' : 'm',
+        },
         tileConfig: {
           width: tileConfig.width,
           height: tileConfig.height,
@@ -63,9 +69,10 @@ export default function ProjectPanel() {
       setProjectName(latest.name);
 
       if (latest.room) {
-        useTileFlowStore.getState().setRoomWidth(latest.room.width);
-        useTileFlowStore.getState().setRoomHeight(latest.room.height);
-        useTileFlowStore.getState().setUnit(latest.room.unit as any);
+        // Server stores dimensions in mm
+        useTileFlowStore.getState().setRoomWidthMM(latest.room.width);
+        useTileFlowStore.getState().setRoomHeightMM(latest.room.height);
+        useTileFlowStore.getState().setSystem(systemForUnit(latest.room.unit as any));
       }
       if (latest.tileConfig) {
         const tc = latest.tileConfig;

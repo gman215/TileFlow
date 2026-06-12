@@ -4,28 +4,36 @@ import type {
   Room,
   TileConfig,
   PatternType,
-  Unit,
   OptimizationConfig,
   LayoutResult,
+  AlignmentMode,
 } from '@tileflow/geometry';
-import { DEFAULT_OPTIMIZATION_CONFIG, toMM } from '@tileflow/geometry';
+import { DEFAULT_OPTIMIZATION_CONFIG } from '@tileflow/geometry';
+import type { MeasurementSystem } from '../utils/measurements';
 
 // ─── State Shape ──────────────────────────────────────────────────────────────
 
 export interface TileFlowState {
-  // Room
+  // Room — all dimensions stored and set in mm
   room: Room;
-  unit: Unit;
-  setRoomWidth: (w: number) => void;
-  setRoomHeight: (h: number) => void;
-  setUnit: (u: Unit) => void;
+  /** Display measurement system (metric / imperial) shared across the app */
+  system: MeasurementSystem;
+  setSystem: (s: MeasurementSystem) => void;
+  setRoomWidthMM: (wMM: number) => void;
+  setRoomHeightMM: (hMM: number) => void;
 
-  // Tile config
+  // Tile config — all dimensions stored and set in mm
   tileConfig: TileConfig;
-  setTileWidth: (w: number) => void;
-  setTileHeight: (h: number) => void;
-  setGrout: (g: number) => void;
+  /** Set both tile dimensions at once (presets, swap) */
+  setTileSizeMM: (wMM: number, hMM: number) => void;
+  setGroutMM: (gMM: number) => void;
   setPattern: (p: PatternType) => void;
+  /** Lay tiles landscape (long side horizontal) or portrait (long side vertical) */
+  setTileOrientation: (orientation: 'horizontal' | 'vertical') => void;
+
+  // Grid alignment within the room
+  alignment: AlignmentMode;
+  setAlignment: (a: AlignmentMode) => void;
 
   // Optimization
   optimizationConfig: OptimizationConfig;
@@ -51,10 +59,6 @@ export interface TileFlowState {
   projectName: string;
   setProjectId: (id: string | null) => void;
   setProjectName: (name: string) => void;
-
-  // Canvas
-  canvasScale: number;
-  setCanvasScale: (s: number) => void;
 }
 
 // ─── Default Values ───────────────────────────────────────────────────────────
@@ -77,50 +81,46 @@ export const useTileFlowStore = create<TileFlowState>()(
   subscribeWithSelector((set, get) => ({
     // Room
     room: DEFAULT_ROOM,
-    unit: 'mm' as Unit,
+    system: 'metric' as MeasurementSystem,
 
-    setRoomWidth: (w: number) => {
-      const unit = get().unit;
-      set({
-        room: { ...get().room, width: toMM(w, unit) },
-      });
-    },
+    setSystem: (s: MeasurementSystem) => set({ system: s }),
 
-    setRoomHeight: (h: number) => {
-      const unit = get().unit;
-      set({
-        room: { ...get().room, height: toMM(h, unit) },
-      });
-    },
+    setRoomWidthMM: (wMM: number) =>
+      set({ room: { ...get().room, width: wMM } }),
 
-    setUnit: (u: Unit) => set({ unit: u }),
+    setRoomHeightMM: (hMM: number) =>
+      set({ room: { ...get().room, height: hMM } }),
 
     // Tile config
     tileConfig: DEFAULT_TILE,
 
-    setTileWidth: (w: number) => {
-      const unit = get().unit;
+    setTileSizeMM: (wMM: number, hMM: number) =>
       set({
-        tileConfig: { ...get().tileConfig, width: toMM(w, unit) },
-      });
-    },
+        tileConfig: { ...get().tileConfig, width: wMM, height: hMM },
+      }),
 
-    setTileHeight: (h: number) => {
-      const unit = get().unit;
+    setGroutMM: (gMM: number) =>
       set({
-        tileConfig: { ...get().tileConfig, height: toMM(h, unit) },
-      });
-    },
-
-    setGrout: (g: number) => {
-      const unit = get().unit;
-      set({
-        tileConfig: { ...get().tileConfig, grout: toMM(g, unit) },
-      });
-    },
+        tileConfig: { ...get().tileConfig, grout: gMM },
+      }),
 
     setPattern: (p: PatternType) =>
       set({ tileConfig: { ...get().tileConfig, pattern: p } }),
+
+    setTileOrientation: (orientation: 'horizontal' | 'vertical') => {
+      const { width, height } = get().tileConfig;
+      const landscape = width >= height;
+      const wantLandscape = orientation === 'horizontal';
+      if (landscape !== wantLandscape) {
+        set({
+          tileConfig: { ...get().tileConfig, width: height, height: width },
+        });
+      }
+    },
+
+    // Alignment
+    alignment: 'optimize' as AlignmentMode,
+    setAlignment: (a: AlignmentMode) => set({ alignment: a }),
 
     // Optimization
     optimizationConfig: { ...DEFAULT_OPTIMIZATION_CONFIG },
@@ -166,9 +166,5 @@ export const useTileFlowStore = create<TileFlowState>()(
     projectName: 'Untitled Project',
     setProjectId: (id) => set({ projectId: id }),
     setProjectName: (name) => set({ projectName: name }),
-
-    // Canvas
-    canvasScale: 0.2,
-    setCanvasScale: (s) => set({ canvasScale: s }),
   }))
 );

@@ -9,8 +9,8 @@
  * to find the best alignment.
  */
 
-import { Polygon, TileConfig, PatternType } from '../types';
-import { rectToPolygon, rotatePolygon, translatePolygon } from '../utils/math';
+import { Polygon, Room, TileConfig, AlignmentMode } from '../types';
+import { rectToPolygon, rotatePolygon } from '../utils/math';
 
 export interface PatternGeneratorParams {
   tileConfig: TileConfig;
@@ -29,21 +29,30 @@ export interface PatternGeneratorParams {
  * Returns an array of unclipped tile polygons.
  */
 export function generateTiles(params: PatternGeneratorParams): Polygon[] {
-  const { tileConfig } = params;
+  const { tileConfig, areaWidth, areaHeight } = params;
+
+  let tiles: Polygon[];
   switch (tileConfig.pattern) {
     case 'grid':
-      return generateGrid(params);
+      tiles = generateGrid(params);
+      break;
     case 'offset-1/2':
-      return generateOffset(params, 0.5);
+      tiles = generateOffset(params, 0.5);
+      break;
     case 'offset-1/3':
-      return generateOffset(params, 1 / 3);
+      tiles = generateOffset(params, 1 / 3);
+      break;
     case 'herringbone':
-      return generateHerringbone(params);
+      tiles = generateHerringbone(params);
+      break;
     case 'diagonal-45':
-      return generateDiagonal45(params);
+      tiles = generateDiagonal45(params);
+      break;
     default:
-      return generateGrid(params);
+      tiles = generateGrid(params);
   }
+
+  return tiles;
 }
 
 /**
@@ -98,13 +107,20 @@ function generateOffset(
 }
 
 /**
- * Herringbone pattern: alternating rows of horizontal and vertical tiles
- * arranged in a zigzag staircase pattern.
+ * Herringbone pattern: tiles alternate between horizontal and vertical
+ * orientation, each pair forming an "L". Pairs repeat along horizontal
+ * "rows" spaced one effective tile width (h + g) apart, and every row
+ * shifts left by one tile width — producing the interlocking 45° zigzag.
  *
- * Each "H-row" has tiles oriented (h × w) — long side horizontal.
- * Each "V-row" has tiles oriented (w × h) — long side vertical.
- * Between successive row-pairs the grid shifts right by (w + g)
- * to produce the characteristic diagonal zigzag.
+ * Construction (effective dims W = w + g, H = h + g):
+ *   row s sits at y = s·H, shifted horizontally by −s·H
+ *   within a row, pairs repeat every (W + 2H):
+ *     horizontal tile at (x, y), size w × h
+ *     vertical tile at (x + W, y), size h × w (top-aligned)
+ *
+ * The tiling is exact (no gaps/overlaps) when W = 2H, i.e. the classic
+ * 2:1 herringbone tile. Other ratios still render the same pattern with
+ * grout-line drift proportional to the mismatch.
  */
 function generateHerringbone(params: PatternGeneratorParams): Polygon[] {
   const { tileConfig, areaWidth, areaHeight, offsetX, offsetY } = params;
@@ -113,51 +129,34 @@ function generateHerringbone(params: PatternGeneratorParams): Polygon[] {
   const g = tileConfig.grout;
   const tiles: Polygon[] = [];
 
-  // Height of one H-row + V-row pair (one "lane pair")
-  const hRowH = w + g;  // height taken by an H-row (tile height = w) + grout
-  const vRowH = h + g;  // height taken by a V-row (tile height = h) + grout
-  const lanePairH = hRowH + vRowH;
+  const W = w + g; // effective tile length
+  const H = h + g; // effective tile width
+  const period = W + 2 * H; // x spacing between pairs within a row
 
-  // Tile spacing within each row
-  const hTileSpacing = h + g; // H-row tiles: each h wide + grout
-  const vTileSpacing = w + g; // V-row tiles: each w wide + grout
+  // Tiles extend at most max(w, h) below their row line.
+  const margin = Math.max(w, h) + g;
 
-  const margin = (w + h) * 3;
+  // Normalize offsetY into [0, H); whole-row shifts fold into X
+  // (moving down one row is equivalent to shifting right by H).
+  const rowsShifted = Math.floor(offsetY / H);
+  const adjY = offsetY - rowsShifted * H;
+  const baseShift = offsetX + rowsShifted * H;
 
-  // Normalize offsets into positive modular range
-  const adjOffY = ((offsetY % lanePairH) + lanePairH) % lanePairH;
+  const sMin = Math.floor((-margin - adjY) / H);
+  const sMax = Math.ceil((areaHeight + margin - adjY) / H);
 
-  let pairIndex = 0;
-  for (
-    let baseY = -margin + adjOffY - lanePairH;
-    baseY < areaHeight + margin;
-    baseY += lanePairH
-  ) {
-    // Progressive shift: each lane pair shifts right by (w + g)
-    const shift = pairIndex * (w + g) + offsetX;
+  for (let s = sMin; s <= sMax; s++) {
+    const y = s * H + adjY;
+    // Each successive row shifts left by one effective tile width.
+    const shift = baseShift - s * H;
+    const adjX = ((shift % period) + period) % period;
 
-    // ── H-row ──
-    const hAdj = ((shift % hTileSpacing) + hTileSpacing) % hTileSpacing;
-    for (
-      let x = -margin + hAdj - hTileSpacing;
-      x < areaWidth + margin;
-      x += hTileSpacing
-    ) {
-      tiles.push(rectToPolygon(x, baseY, h, w));
+    for (let x = adjX - 2 * period; x < areaWidth + margin; x += period) {
+      // Horizontal tile of the pair
+      tiles.push(rectToPolygon(x, y, w, h));
+      // Vertical tile, top-aligned at the horizontal tile's right end
+      tiles.push(rectToPolygon(x + W, y, h, w));
     }
-
-    // ── V-row (below the H-row) ──
-    const vShift = shift + (h - w) / 2 + g / 2; // center V tiles on H-tile joints
-    const vAdj = ((vShift % vTileSpacing) + vTileSpacing) % vTileSpacing;
-    for (
-      let x = -margin + vAdj - vTileSpacing;
-      x < areaWidth + margin;
-      x += vTileSpacing
-    ) {
-      tiles.push(rectToPolygon(x, baseY + hRowH, w, h));
-    }
-
-    pairIndex++;
   }
 
   return tiles;
@@ -197,6 +196,44 @@ function generateDiagonal45(params: PatternGeneratorParams): Polygon[] {
   return tiles;
 }
 
+/** Positive modulo. */
+function mod(a: number, n: number): number {
+  return ((a % n) + n) % n;
+}
+
+/**
+ * Compute the grid offset that aligns the layout to the room:
+ *  - `center-tile`: a full tile is centered on the room center
+ *  - `center-grout`: a grout joint runs through the room center
+ *
+ * Offsets are derived from the basic tile period (width/height + grout),
+ * which is exact for grid / running-bond layouts and a sensible best-effort
+ * for the others (the grout-center case sits half a tile period away from
+ * the tile-center case).
+ */
+export function computeAlignmentOffset(
+  room: Room,
+  config: TileConfig,
+  mode: Exclude<AlignmentMode, 'optimize'>
+): { offsetX: number; offsetY: number } {
+  const tw = config.width + config.grout;
+  const th = config.height + config.grout;
+
+  // Offset that lands a tile's center on the room center.
+  const tileX = mod(room.width / 2 - config.width / 2, tw);
+  const tileY = mod(room.height / 2 - config.height / 2, th);
+
+  if (mode === 'center-tile') {
+    return { offsetX: tileX, offsetY: tileY };
+  }
+
+  // A grout joint sits half a tile period from a tile center.
+  return {
+    offsetX: mod(tileX - tw / 2, tw),
+    offsetY: mod(tileY - th / 2, th),
+  };
+}
+
 /**
  * Get the pattern-specific unit dimensions for offset calculations.
  */
@@ -211,9 +248,11 @@ export function getPatternUnit(config: TileConfig): { unitX: number; unitY: numb
     case 'diagonal-45':
       return { unitX: tw, unitY: th };
     case 'herringbone':
+      // Pairs repeat every (W + 2H) horizontally; rows repeat every H
+      // vertically (a row step is equivalent to an X shift of H).
       return {
-        unitX: tw + th - config.grout, // (w + g) + (h + g) - g = w + h + g
-        unitY: tw + th - config.grout,
+        unitX: tw + 2 * th,
+        unitY: th,
       };
     default:
       return { unitX: tw, unitY: th };

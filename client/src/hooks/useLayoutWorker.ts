@@ -5,6 +5,7 @@ import type {
   Room,
   TileConfig,
   OptimizationConfig,
+  AlignmentMode,
 } from '@tileflow/geometry';
 import { useTileFlowStore } from '../store/tileFlowStore';
 
@@ -60,7 +61,8 @@ export function useLayoutWorker() {
     (
       room: Room,
       tileConfig: TileConfig,
-      optimizationConfig: OptimizationConfig
+      optimizationConfig: OptimizationConfig,
+      alignment: AlignmentMode
     ) => {
       if (!workerRef.current) return;
 
@@ -73,6 +75,7 @@ export function useLayoutWorker() {
         room,
         tileConfig,
         optimizationConfig,
+        alignment,
         requestId,
       };
 
@@ -87,13 +90,14 @@ export function useLayoutWorker() {
       room: Room,
       tileConfig: TileConfig,
       optimizationConfig: OptimizationConfig,
+      alignment: AlignmentMode,
       delay = 100
     ) => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
       debounceTimerRef.current = setTimeout(() => {
-        dispatch(room, tileConfig, optimizationConfig);
+        dispatch(room, tileConfig, optimizationConfig, alignment);
       }, delay);
     },
     [dispatch]
@@ -106,9 +110,10 @@ export function useLayoutWorker() {
         room: state.room,
         tileConfig: state.tileConfig,
         optimizationConfig: state.optimizationConfig,
+        alignment: state.alignment,
       }),
-      ({ room, tileConfig, optimizationConfig }) => {
-        debouncedDispatch(room, tileConfig, optimizationConfig, 150);
+      ({ room, tileConfig, optimizationConfig, alignment }) => {
+        debouncedDispatch(room, tileConfig, optimizationConfig, alignment, 150);
       },
       { equalityFn: (a, b) => JSON.stringify(a) === JSON.stringify(b) }
     );
@@ -118,8 +123,9 @@ export function useLayoutWorker() {
 
   // Trigger initial computation
   useEffect(() => {
-    const { room, tileConfig, optimizationConfig } = useTileFlowStore.getState();
-    dispatch(room, tileConfig, optimizationConfig);
+    const { room, tileConfig, optimizationConfig, alignment } =
+      useTileFlowStore.getState();
+    dispatch(room, tileConfig, optimizationConfig, alignment);
   }, [dispatch]);
 
   return { dispatch, debouncedDispatch };

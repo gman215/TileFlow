@@ -11,6 +11,7 @@ import {
   type WorkerRequest,
   type WorkerResponse,
   computeLayout,
+  computeAlignmentOffset,
   optimize,
 } from '@tileflow/geometry';
 
@@ -44,16 +45,41 @@ ctx.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
       }
 
       case 'optimize': {
-        const { bestLayout, candidatesEvaluated } = optimize(
-          request.room,
-          request.tileConfig,
-          request.optimizationConfig
-        );
+        const alignment = request.alignment ?? 'optimize';
+
+        let result;
+        let candidatesEvaluated;
+
+        if (alignment === 'optimize') {
+          const optimized = optimize(
+            request.room,
+            request.tileConfig,
+            request.optimizationConfig
+          );
+          result = optimized.bestLayout;
+          candidatesEvaluated = optimized.candidatesEvaluated;
+        } else {
+          // Fixed alignment — position the grid deterministically, no search.
+          const { offsetX, offsetY } = computeAlignmentOffset(
+            request.room,
+            request.tileConfig,
+            alignment
+          );
+          result = computeLayout(
+            request.room,
+            request.tileConfig,
+            offsetX,
+            offsetY,
+            request.optimizationConfig.weights
+          );
+          candidatesEvaluated = 1;
+        }
+
         const elapsed = performance.now() - start;
 
         const response: WorkerResponse = {
           type: 'optimize-result',
-          result: bestLayout,
+          result,
           requestId: request.requestId,
           computeTimeMs: elapsed,
           candidatesEvaluated,

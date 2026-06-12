@@ -22,6 +22,7 @@ export {
 export {
   generateTiles,
   getPatternUnit,
+  computeAlignmentOffset,
   type PatternGeneratorParams,
 } from './patterns';
 

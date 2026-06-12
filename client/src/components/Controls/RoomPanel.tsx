@@ -1,73 +1,75 @@
 import React from 'react';
 import { useTileFlowStore } from '../../store/tileFlowStore';
-import { fromMM, ALL_UNITS, UNIT_LABELS, type Unit } from '@tileflow/geometry';
+import { roomDisplay, type MeasurementSystem } from '../../utils/measurements';
+import DimensionField from './DimensionField';
+
+const SYSTEMS: { value: MeasurementSystem; label: string }[] = [
+  { value: 'metric', label: 'Metric' },
+  { value: 'imperial', label: 'Imperial' },
+];
 
 export default function RoomPanel() {
   const room = useTileFlowStore((s) => s.room);
-  const unit = useTileFlowStore((s) => s.unit);
-  const setRoomWidth = useTileFlowStore((s) => s.setRoomWidth);
-  const setRoomHeight = useTileFlowStore((s) => s.setRoomHeight);
-  const setUnit = useTileFlowStore((s) => s.setUnit);
+  const system = useTileFlowStore((s) => s.system);
+  const setSystem = useTileFlowStore((s) => s.setSystem);
+  const setRoomWidthMM = useTileFlowStore((s) => s.setRoomWidthMM);
+  const setRoomHeightMM = useTileFlowStore((s) => s.setRoomHeightMM);
 
-  const displayWidth = fromMM(room.width, unit);
-  const displayHeight = fromMM(room.height, unit);
-
-  // Step and precision per unit
-  const stepMap: Record<Unit, number> = { mm: 10, cm: 1, m: 0.1, inches: 0.25, feet: 0.25 };
-  const precisionMap: Record<Unit, number> = { mm: 0, cm: 1, m: 2, inches: 2, feet: 2 };
-  const step = stepMap[unit];
-  const precision = precisionMap[unit];
+  const display = roomDisplay(system);
+  const imperial = system === 'imperial';
 
   return (
-    <div className="panel space-y-3">
-      <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-        Room Dimensions
-      </h3>
-
-      {/* Unit toggle */}
-      <div className="flex flex-wrap gap-1">
-        {ALL_UNITS.map((u) => (
-          <button
-            key={u}
-            onClick={() => setUnit(u)}
-            className={`px-2.5 py-1.5 text-xs font-medium rounded transition-colors ${
-              unit === u
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-            }`}
-          >
-            {UNIT_LABELS[u]}
-          </button>
-        ))}
-      </div>
-
-      <div className="space-y-2">
-        <div>
-          <label className="input-label">Width ({UNIT_LABELS[unit]})</label>
-          <input
-            type="number"
-            className="input-field"
-            value={Number(displayWidth.toFixed(precision))}
-            onChange={(e) => setRoomWidth(parseFloat(e.target.value) || 0)}
-            step={step}
-            min={0}
-          />
-        </div>
-        <div>
-          <label className="input-label">Height ({UNIT_LABELS[unit]})</label>
-          <input
-            type="number"
-            className="input-field"
-            value={Number(displayHeight.toFixed(precision))}
-            onChange={(e) => setRoomHeight(parseFloat(e.target.value) || 0)}
-            step={step}
-            min={0}
-          />
+    <div className="panel space-y-2.5">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
+          Room
+        </h3>
+        {/* System toggle — controls how every measurement is shown */}
+        <div className="flex rounded overflow-hidden border border-gray-700">
+          {SYSTEMS.map(({ value, label }) => (
+            <button
+              key={value}
+              onClick={() => setSystem(value)}
+              className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                system === value
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <p className="text-xs text-gray-500">
-        Drag the room edges on the canvas to resize in real time.
+      <div className="flex items-center gap-1.5">
+        <DimensionField
+          label="W"
+          mm={room.width}
+          unit={display.unit}
+          imperialFormat={display.imperialFormat}
+          onChangeMM={setRoomWidthMM}
+          minMM={100}
+          className="flex-1"
+          title={imperial ? 'Width — e.g. 12 ft 6 in' : 'Width in metres'}
+        />
+        <span className="text-gray-600 text-xs select-none">×</span>
+        <DimensionField
+          label="H"
+          mm={room.height}
+          unit={display.unit}
+          imperialFormat={display.imperialFormat}
+          onChangeMM={setRoomHeightMM}
+          minMM={100}
+          className="flex-1"
+          title={imperial ? 'Depth — e.g. 10 ft 0 in' : 'Depth in metres'}
+        />
+      </div>
+
+      <p className="text-[10px] text-gray-600">
+        {imperial
+          ? 'Type like 12 ft 6 in · ↑↓ nudges by 1 in (Shift ×10)'
+          : '↑↓ nudges by 10 cm (Shift ×10) · or drag the room edges'}
       </p>
     </div>
   );

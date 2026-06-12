@@ -1,8 +1,12 @@
 import React from 'react';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 
+const MM2_PER_M2 = 1_000_000;
+const MM2_PER_FT2 = 92_903.04;
+
 export default function StatsPanel() {
   const layout = useTileFlowStore((s) => s.layout);
+  const system = useTileFlowStore((s) => s.system);
   const isComputing = useTileFlowStore((s) => s.isComputing);
   const computeTimeMs = useTileFlowStore((s) => s.computeTimeMs);
 
@@ -19,6 +23,12 @@ export default function StatsPanel() {
     );
   }
 
+  const totalTiles = layout.fullTileCount + layout.cutTileCount;
+  const imperial = system === 'imperial';
+  const roomAreaDisplay = imperial
+    ? `${(layout.roomArea / MM2_PER_FT2).toFixed(1)} ft²`
+    : `${(layout.roomArea / MM2_PER_M2).toFixed(2)} m²`;
+
   const stats = [
     {
       label: 'Full Tiles',
@@ -32,8 +42,18 @@ export default function StatsPanel() {
     },
     {
       label: 'Total Tiles',
-      value: (layout.fullTileCount + layout.cutTileCount).toString(),
+      value: totalTiles.toString(),
       color: 'text-white',
+    },
+    {
+      label: 'Buy (+10%)',
+      value: Math.ceil(totalTiles * 1.1).toString(),
+      color: 'text-purple-300',
+    },
+    {
+      label: 'Room Area',
+      value: roomAreaDisplay,
+      color: 'text-cyan-300',
     },
     {
       label: 'Waste',

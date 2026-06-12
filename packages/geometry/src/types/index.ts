@@ -84,6 +84,14 @@ export interface TileConfig {
   pattern: PatternType;
 }
 
+/**
+ * How the tile grid is positioned within the room.
+ * - `optimize`: search for the offset that minimizes waste / maximizes cuts
+ * - `center-tile`: a full tile is centered on the room center
+ * - `center-grout`: a grout joint runs through the room center
+ */
+export type AlignmentMode = 'optimize' | 'center-tile' | 'center-grout';
+
 // ─── Obstacle (future-ready) ──────────────────────────────────────────────────
 
 export type ObstacleShape = 'circle' | 'square' | 'rect' | 'polygon';
@@ -183,6 +191,8 @@ export interface OptimizeRequest {
   room: Room;
   tileConfig: TileConfig;
   optimizationConfig: OptimizationConfig;
+  /** When omitted or 'optimize', the offset is searched; otherwise it's fixed */
+  alignment?: AlignmentMode;
   requestId: string;
 }
 
