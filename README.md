@@ -16,7 +16,7 @@ A real-time tile layout optimizer that helps users plan tile installations by de
 
 - **5 Tile Patterns** — Grid, ½ Offset (brick bond), ⅓ Offset, Herringbone, and 45° Diagonal
 - **Visual Pattern Previews** — Each pattern shows a live miniature rendered by the geometry engine before you select it
-- **Correct Herringbone** — Interlocking L-shaped pairs with progressive row shift (exact tiling for 2:1 tiles including grout)
+- **Correct Herringbone** — Classic 45° interlocking weave built from an L-block lattice; gap-free exact tiling for 2:1 tiles (`w + g = 2·(h + g)`), including grout
 - **Layout Alignment** — Choose how the grid sits in the room:
   - **Auto** — Two-phase optimizer searches for the lowest-waste offset
   - **Center tile** — A full tile is centered on the room
@@ -92,7 +92,7 @@ tileflow/
 
 The **geometry engine** (`@tileflow/geometry`) is a standalone package with zero framework dependencies. It exports:
 
-- **Pattern generators** — Produce tile polygon grids for each pattern type, accepting `(offsetX, offsetY)` that the optimizer varies. Herringbone uses an interlocking L-pair lattice with exact 2:1 tiling when `length + grout = 2 × (width + grout)`.
+- **Pattern generators** — Produce tile polygon grids for each pattern type, accepting `(offsetX, offsetY)` that the optimizer varies. Herringbone places L-blocks on the lattice `t1 = (S, S)`, `t2 = (2S, −2S)` (with `S = h + g`) and rotates the weave −45°, giving an exact gap-free tiling when `w + g = 2·(h + g)`.
 - **Alignment offset** — `computeAlignmentOffset()` positions the grid for center-tile or center-grout modes without running the optimizer.
 - **Sutherland-Hodgman polygon clipping** — Clips tiles against the room boundary with AABB fast-reject/accept for performance.
 - **Two-phase optimizer** — Coarse grid scan at half-tile steps, then fine refinement around the best candidate.
