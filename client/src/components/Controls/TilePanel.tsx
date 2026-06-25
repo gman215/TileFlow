@@ -92,12 +92,12 @@ const PatternPreview = React.memo(
         preserveAspectRatio="xMidYMid slice"
         aria-hidden
       >
-        <rect width={VIEW_W} height={VIEW_H} fill={active ? '#1e3a8a' : '#111827'} />
+        <rect width={VIEW_W} height={VIEW_H} fill={active ? '#1B1B19' : '#E6E4DF'} />
         {polys.map((p, i) => (
           <polygon
             key={i}
             points={p.vertices.map((v) => `${v.x},${v.y}`).join(' ')}
-            fill={active ? '#93c5fd' : '#4b5563'}
+            fill={active ? '#8FB3D9' : '#9A9892'}
           />
         ))}
       </svg>
@@ -143,12 +143,10 @@ export default function TilePanel() {
   const isLandscape = tileConfig.width >= tileConfig.height;
 
   return (
-    <div className="panel space-y-2.5">
+    <div className="px-4 py-4 space-y-2.5">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-          Tile
-        </h3>
-        <span className="text-[10px] text-gray-600">sizes in {presetUnitLabel}</span>
+        <h3 className="section-header">Tile</h3>
+        <span className="text-[10px] text-ink-muted">sizes in {presetUnitLabel}</span>
       </div>
 
       {/* Quick size presets */}
@@ -157,10 +155,8 @@ export default function TilePanel() {
           <button
             key={label}
             onClick={() => setTileSizeMM(w, h)}
-            className={`px-2 py-1 text-[11px] font-medium rounded transition-colors ${
-              isPresetActive(w, h)
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+            className={`seg px-2 py-1 text-[11px] font-mono ${
+              isPresetActive(w, h) ? 'seg-active' : 'seg-idle'
             }`}
           >
             {label}
@@ -196,16 +192,14 @@ export default function TilePanel() {
 
       {/* Tile orientation — swaps W/H (e.g. 12×24 ↔ 24×12) */}
       <div className="flex items-center gap-1.5">
-        <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-10 shrink-0">
+        <span className="text-[10px] font-semibold text-ink-muted w-10 shrink-0">
           Lay
         </span>
         <button
           onClick={() => setTileOrientation('horizontal')}
           title="Landscape — long side runs horizontally (e.g. 24 × 12 in)"
-          className={`flex-1 py-1.5 text-xs font-medium rounded transition-colors ${
-            isLandscape
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+          className={`seg flex-1 py-1.5 text-xs ${
+            isLandscape ? 'seg-active' : 'seg-idle'
           }`}
         >
           ↔ Horizontal
@@ -213,10 +207,8 @@ export default function TilePanel() {
         <button
           onClick={() => setTileOrientation('vertical')}
           title="Portrait — long side runs vertically (e.g. 12 × 24 in)"
-          className={`flex-1 py-1.5 text-xs font-medium rounded transition-colors ${
-            !isLandscape
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+          className={`seg flex-1 py-1.5 text-xs ${
+            !isLandscape ? 'seg-active' : 'seg-idle'
           }`}
         >
           ↕ Vertical
@@ -241,10 +233,8 @@ export default function TilePanel() {
             <button
               key={label}
               onClick={() => setGroutMM(mm)}
-              className={`px-1.5 py-1 text-[10px] font-medium rounded transition-colors ${
-                approx(tileConfig.grout, mm)
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              className={`seg px-1.5 py-1 text-[10px] font-mono ${
+                approx(tileConfig.grout, mm) ? 'seg-active' : 'seg-idle'
               }`}
             >
               {label}
@@ -261,16 +251,12 @@ export default function TilePanel() {
             <button
               key={value}
               onClick={() => setPattern(value)}
-              className={`p-1.5 rounded border text-left transition-colors ${
-                active
-                  ? 'border-blue-500 bg-blue-600/20'
-                  : 'border-gray-800 bg-gray-800/60 hover:border-gray-600'
-              }`}
+              className={`seg p-1.5 text-left ${active ? 'seg-active' : 'seg-idle'}`}
             >
               <PatternPreview pattern={value} active={active} />
               <span
                 className={`block mt-1 text-[11px] font-medium ${
-                  active ? 'text-blue-300' : 'text-gray-400'
+                  active ? 'text-white' : 'text-[#57554F]'
                 }`}
               >
                 {label}
@@ -289,10 +275,8 @@ export default function TilePanel() {
               key={value}
               onClick={() => setAlignment(value)}
               title={title}
-              className={`py-1.5 text-[11px] font-medium rounded transition-colors ${
-                alignment === value
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              className={`seg py-1.5 text-[11px] ${
+                alignment === value ? 'seg-active' : 'seg-idle'
               }`}
             >
               {label}
@@ -300,22 +284,22 @@ export default function TilePanel() {
           ))}
         </div>
         {alignment !== 'optimize' && (
-          <p className="text-[10px] text-gray-500">
+          <p className="text-[10px] text-ink-muted">
             Fixed alignment — the optimizer is paused while centering.
           </p>
         )}
       </div>
 
       {herringboneMismatch && (
-        <div className="rounded border border-amber-600/40 bg-amber-500/10 p-2 space-y-1.5">
-          <p className="text-[11px] text-amber-300 leading-snug">
+        <div className="rounded-lg border border-amber-500/50 bg-amber-50 p-2 space-y-1.5">
+          <p className="text-[11px] text-amber-800 leading-snug">
             Herringbone only fits exactly with 2:1 tiles (length = 2 × width,
             including grout). Other sizes will show gaps or drifting joints.
           </p>
           <button
             onClick={() => setTileSizeMM(herringbonePreset.w, herringbonePreset.h)}
-            className="px-2 py-1 text-[11px] font-medium rounded bg-amber-500/20
-                       text-amber-200 hover:bg-amber-500/30 transition-colors"
+            className="px-2 py-1 text-[11px] font-medium rounded-lg bg-amber-100
+                       text-amber-900 hover:bg-amber-200 transition-colors"
           >
             Use {herringbonePreset.label}
           </button>

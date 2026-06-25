@@ -25,7 +25,7 @@ A real-time tile layout optimizer that helps users plan tile installations by de
 
 ### Measurements
 
-- **Metric / Imperial Toggle** — One switch drives the whole app; each field uses the unit a pro would actually use:
+- **Metric / Imperial Toggle** — One switch in the top app bar drives the whole app; each field uses the unit a pro would actually use:
 
   | Field | Imperial | Metric |
   |---|---|---|
@@ -42,17 +42,20 @@ A real-time tile layout optimizer that helps users plan tile installations by de
 
 ### Canvas & Editing
 
-- **Interactive 2D Canvas** — Color-coded tiles (blue = full, orange = cut) rendered with react-konva
+- **Studio Layout** — Light "studio" shell with a dark canvas stage; the tile plan is the focus while controls sit in a quiet white sidebar
+- **Interactive 2D Canvas** — Color-coded tiles (full vs. cut) rendered with react-konva on a dark stage
+- **Floating Canvas Toolbar** — Translucent dark pills overlaid on the stage: current pattern + alignment switch (Auto / Center tile / Center joint) on the left; zoom −/100%/+, **Fit**, and **Edit tiles** toggle on the right
 - **Pan & Zoom** — Drag to pan, scroll-wheel zoom centered on cursor, +/- controls and **Fit** button
-- **Room Resize** — Drag room edges on the canvas; blue grip indicators and resize cursors
+- **Room Resize** — Drag room edges on the canvas with grip indicators and resize cursors
 - **Edit Mode** — Drag individual tiles to fine-tune placement; reset positions when done
-- **Legend** — Full/cut tile key and interaction hints
+- **Legend** — Floating full/cut tile key chip on the stage
 
 ### Optimization & Stats
 
 - **Two-Phase Hybrid Optimizer** — Coarse scan + fine refinement to find the best tile offset, evaluated with a configurable scoring function: `score = (α × minCutNorm) − (β × waste%)`
+- **Tunable Weights** — Two sliders, **Prefer larger cuts** (α) and **Penalize waste** (β)
 - **Web Worker Computation** — Geometry engine runs off the main thread with debounced auto-recompute (150 ms) for a responsive UI
-- **Live Statistics** — Full/cut/total tile counts, **Buy (+10%)** order estimate, room area, waste %, smallest cut piece, optimization score, and computation time
+- **Live Statistics** — A floating stats card on the canvas leads with two hero figures — **Order to buy (incl. 10%)** and **Waste %** (green ≤ 10%, red > 10%) — backed by a quiet secondary row of full / cut / total tile counts, room area, and compute time
 - **Project Persistence** — Save and load projects via a REST API backed by PostgreSQL
 
 ---
@@ -61,7 +64,7 @@ A real-time tile layout optimizer that helps users plan tile installations by de
 
 | Layer | Technologies |
 |---|---|
-| **Client** | React 18, Vite, Zustand, react-konva (Konva), Tailwind CSS |
+| **Client** | React 18, Vite, Zustand, react-konva (Konva), Tailwind CSS (Hanken Grotesk + IBM Plex Mono) |
 | **Server** | Express, Prisma ORM, PostgreSQL, Zod validation |
 | **Geometry Engine** | Pure TypeScript — framework-independent, runs in browser, Web Worker, or Node.js |
 | **Monorepo** | npm workspaces with 4 packages |
@@ -154,6 +157,18 @@ npm run dev
 ```bash
 npm run build
 ```
+
+---
+
+## Deployment
+
+The client is deployed on **Vercel** as a Vite single-page app.
+
+- **Build command:** `npm run build:client`
+- **Output directory:** `client/dist`
+- **Install command:** `npm install` (npm workspaces installs the `@tileflow/geometry` package the client depends on)
+
+The client calls the API at the relative base `/api` (see `client/src/api/client.ts`), so project Save/Load works only when `/api/*` is routed to a running Express server — e.g. a Vercel rewrite to the deployed backend. Database-backed persistence also requires the server's `DATABASE_URL` to be set and reachable. The layout/optimization engine itself runs entirely client-side in a Web Worker, so the planner works without a backend.
 
 ---
 

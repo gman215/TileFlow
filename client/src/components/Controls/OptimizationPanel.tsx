@@ -9,17 +9,13 @@ export default function OptimizationPanel() {
   const { alpha, beta } = optimizationConfig.weights;
 
   return (
-    <div className="panel space-y-3">
-      <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-        Optimization Weights
-      </h3>
+    <div className="px-4 py-4 space-y-3">
+      <h3 className="section-header">Optimization</h3>
 
       <div>
         <div className="flex justify-between">
-          <label className="input-label">
-            α — Min Cut Preference
-          </label>
-          <span className="text-xs text-blue-400 font-mono">
+          <label className="input-label">Prefer larger cuts</label>
+          <span className="text-xs text-ink-secondary font-mono">
             {alpha.toFixed(2)}
           </span>
         </div>
@@ -30,19 +26,17 @@ export default function OptimizationPanel() {
           step={0.05}
           value={alpha}
           onChange={(e) => setAlpha(parseFloat(e.target.value))}
-          className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+          className="w-full h-1.5 bg-hairline rounded-lg appearance-none cursor-pointer accent-accent"
         />
-        <p className="text-[10px] text-gray-500 mt-0.5">
+        <p className="text-[10px] text-ink-muted mt-0.5">
           Higher = prefer larger minimum cut pieces
         </p>
       </div>
 
       <div>
         <div className="flex justify-between">
-          <label className="input-label">
-            β — Waste Penalty
-          </label>
-          <span className="text-xs text-orange-400 font-mono">
+          <label className="input-label">Penalize waste</label>
+          <span className="text-xs text-ink-secondary font-mono">
             {beta.toFixed(2)}
           </span>
         </div>
@@ -53,14 +47,14 @@ export default function OptimizationPanel() {
           step={0.05}
           value={beta}
           onChange={(e) => setBeta(parseFloat(e.target.value))}
-          className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
+          className="w-full h-1.5 bg-hairline rounded-lg appearance-none cursor-pointer accent-accent"
         />
-        <p className="text-[10px] text-gray-500 mt-0.5">
+        <p className="text-[10px] text-ink-muted mt-0.5">
           Higher = penalize waste more heavily
         </p>
       </div>
 
-      <div className="text-xs text-gray-500 border-t border-gray-800 pt-2 mt-2">
+      <div className="text-xs text-ink-muted border-t border-divider pt-2 mt-2">
         <p className="font-mono text-[10px]">
           score = (α × minCutNorm) − (β × waste%)
         </p>

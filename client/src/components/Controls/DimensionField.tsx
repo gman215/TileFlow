@@ -103,11 +103,11 @@ export default function DimensionField({
   return (
     <div
       title={title}
-      className={`flex items-center bg-gray-800 border border-gray-700 rounded
-                  focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500
+      className={`flex items-center bg-[#F7F6F3] border border-hairline rounded-lg
+                  focus-within:border-accent focus-within:ring-1 focus-within:ring-accent
                   transition-colors ${className}`}
     >
-      <span className="pl-2 pr-1.5 text-[10px] font-semibold text-gray-500 select-none shrink-0">
+      <span className="pl-2.5 pr-1.5 text-[10px] font-semibold text-ink-muted select-none shrink-0">
         {label}
       </span>
       <input
@@ -119,10 +119,10 @@ export default function DimensionField({
         onFocus={(e) => e.target.select()}
         placeholder={placeholder}
         spellCheck={false}
-        className="w-full min-w-0 bg-transparent py-1.5 text-sm text-gray-100 outline-none"
+        className="w-full min-w-0 bg-transparent py-1.5 font-mono text-sm text-ink outline-none"
       />
       {suffix && (
-        <span className="pr-2 pl-1 text-[10px] text-gray-500 select-none shrink-0">
+        <span className="pr-2.5 pl-1 text-[10px] text-ink-muted select-none shrink-0">
           {suffix}
         </span>
       )}

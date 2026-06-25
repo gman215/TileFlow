@@ -4,6 +4,14 @@ import { useTileFlowStore } from '../../store/tileFlowStore';
 const MM2_PER_M2 = 1_000_000;
 const MM2_PER_FT2 = 92_903.04;
 
+// Shared translucent-dark surface for canvas-floating chrome.
+const CARD_STYLE: React.CSSProperties = {
+  background: 'rgba(36,35,33,.86)',
+  backdropFilter: 'blur(8px)',
+  WebkitBackdropFilter: 'blur(8px)',
+  border: '1px solid rgba(255,255,255,.08)',
+};
+
 export default function StatsPanel() {
   const layout = useTileFlowStore((s) => s.layout);
   const system = useTileFlowStore((s) => s.system);
@@ -12,90 +20,70 @@ export default function StatsPanel() {
 
   if (!layout) {
     return (
-      <div className="panel">
-        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-2">
-          Layout Statistics
-        </h3>
-        <p className="text-xs text-gray-500">
-          {isComputing ? 'Computing...' : 'No layout computed yet.'}
-        </p>
+      <div
+        className="absolute bottom-3 left-3 z-10 rounded-xl px-4 py-3 text-xs text-white/70"
+        style={CARD_STYLE}
+      >
+        {isComputing ? 'Computing…' : 'No layout computed yet.'}
       </div>
     );
   }
 
   const totalTiles = layout.fullTileCount + layout.cutTileCount;
+  const buyCount = Math.ceil(totalTiles * 1.1);
   const imperial = system === 'imperial';
   const roomAreaDisplay = imperial
     ? `${(layout.roomArea / MM2_PER_FT2).toFixed(1)} ft²`
     : `${(layout.roomArea / MM2_PER_M2).toFixed(2)} m²`;
 
-  const stats = [
-    {
-      label: 'Full Tiles',
-      value: layout.fullTileCount.toString(),
-      color: 'text-blue-300',
-    },
-    {
-      label: 'Cut Tiles',
-      value: layout.cutTileCount.toString(),
-      color: 'text-orange-300',
-    },
-    {
-      label: 'Total Tiles',
-      value: totalTiles.toString(),
-      color: 'text-white',
-    },
-    {
-      label: 'Buy (+10%)',
-      value: Math.ceil(totalTiles * 1.1).toString(),
-      color: 'text-purple-300',
-    },
-    {
-      label: 'Room Area',
-      value: roomAreaDisplay,
-      color: 'text-cyan-300',
-    },
-    {
-      label: 'Waste',
-      value: `${layout.wastePercentage.toFixed(1)}%`,
-      color: layout.wastePercentage > 10 ? 'text-red-400' : 'text-green-400',
-    },
-    {
-      label: 'Min Cut',
-      value: `${(layout.smallestCutPiece / 100).toFixed(1)} cm²`,
-      color: 'text-yellow-300',
-    },
-    {
-      label: 'Score',
-      value: layout.optimizationScore.toFixed(3),
-      color: 'text-emerald-400',
-    },
+  const waste = layout.wastePercentage;
+  const wasteColor = waste > 10 ? '#F87171' : '#4ADE80';
+
+  const secondary: { label: string; value: string }[] = [
+    { label: 'Full', value: layout.fullTileCount.toString() },
+    { label: 'Cut', value: layout.cutTileCount.toString() },
+    { label: 'Total', value: totalTiles.toString() },
+    { label: 'Area', value: roomAreaDisplay },
+    { label: 'Compute', value: `${computeTimeMs.toFixed(1)} ms` },
   ];
 
   return (
-    <div className="panel space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-          Layout Statistics
-        </h3>
-        {isComputing && (
-          <span className="text-[10px] text-blue-400 animate-pulse">
-            computing...
-          </span>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        {stats.map((s) => (
-          <div key={s.label} className="stat-card">
-            <div className={`stat-value ${s.color}`}>{s.value}</div>
-            <div className="stat-label">{s.label}</div>
+    <div
+      className="absolute bottom-3 left-3 z-10 rounded-xl p-4 text-white"
+      style={CARD_STYLE}
+    >
+      {/* Hero stats */}
+      <div className="flex gap-8">
+        <div>
+          <div className="font-mono text-[32px] leading-none font-medium">
+            {buyCount}
           </div>
-        ))}
+          <div className="mt-1.5 text-[11px] text-white/55">
+            Order to buy (incl. 10%)
+          </div>
+        </div>
+        <div>
+          <div
+            className="font-mono text-[32px] leading-none font-medium"
+            style={{ color: wasteColor }}
+          >
+            {waste.toFixed(1)}%
+          </div>
+          <div className="mt-1.5 text-[11px] text-white/55">Waste %</div>
+        </div>
       </div>
 
-      <div className="text-[10px] text-gray-600 text-right">
-        Computed in {computeTimeMs.toFixed(1)} ms
+      {/* Quiet secondary row */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/60">
+        {secondary.map((s, i) => (
+          <React.Fragment key={s.label}>
+            {i > 0 && <span className="text-white/20">·</span>}
+            <span>
+              {s.label}{' '}
+              <span className="font-mono text-white/85">{s.value}</span>
+            </span>
+          </React.Fragment>
+        ))}
       </div>
     </div>
   );

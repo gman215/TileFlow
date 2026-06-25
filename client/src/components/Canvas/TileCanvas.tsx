@@ -8,15 +8,40 @@ import React, {
 import { Stage, Layer, Rect, Line, Group, Text } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useTileFlowStore } from '../../store/tileFlowStore';
-import type { PlacedTile, Polygon } from '@tileflow/geometry';
+import type { AlignmentMode, PatternType, PlacedTile, Polygon } from '@tileflow/geometry';
 import { formatDisplayFromMM, roomDisplay } from '../../utils/measurements';
 
-const FULL_TILE_COLOR = '#A7C7E7';
-const CUT_TILE_COLOR = '#E89B7B';
-const GROUT_COLOR = '#4B5563';
-const ROOM_BORDER_COLOR = '#60A5FA';
-const BG_COLOR = '#111827';
-const HANDLE_COLOR = '#60A5FA';
+const FULL_TILE_COLOR = '#8FB3D9';
+const CUT_TILE_COLOR = '#E0A074';
+const GROUT_COLOR = '#3A3A36';
+const ROOM_BORDER_COLOR = 'rgba(255,255,255,0.32)';
+const ROOM_FILL_COLOR = '#26241F';
+const BG_COLOR = '#1B1A18';
+const HANDLE_COLOR = '#D6D3CC';
+const EDIT_COLOR = '#F59E0B';
+const DIM_LABEL_COLOR = 'rgba(255,255,255,0.55)';
+
+// Shared translucent-dark surface for the floating toolbar pills + chips.
+const PILL_STYLE: React.CSSProperties = {
+  background: 'rgba(36,35,33,.86)',
+  backdropFilter: 'blur(8px)',
+  WebkitBackdropFilter: 'blur(8px)',
+  border: '1px solid rgba(255,255,255,.08)',
+};
+
+const PATTERN_LABELS: Record<PatternType, string> = {
+  grid: 'Grid',
+  'offset-1/2': '½ Offset',
+  'offset-1/3': '⅓ Offset',
+  herringbone: 'Herringbone',
+  'diagonal-45': '45° Diagonal',
+};
+
+const ALIGNMENTS: { value: AlignmentMode; label: string; title: string }[] = [
+  { value: 'optimize', label: 'Auto', title: 'Optimize offset to minimize waste' },
+  { value: 'center-tile', label: 'Center tile', title: 'Center a full tile on the room' },
+  { value: 'center-grout', label: 'Center joint', title: 'Run a grout joint through the room center' },
+];
 
 const MIN_SCALE = 0.01;
 const MAX_SCALE = 5;
@@ -80,7 +105,7 @@ const TileShape = React.memo(
         points={points}
         closed
         fill={color}
-        stroke={editMode ? '#F59E0B' : GROUT_COLOR}
+        stroke={editMode ? EDIT_COLOR : GROUT_COLOR}
         strokeWidth={Math.max(0.5, (editMode ? 2 : 1) / scale)}
         perfectDrawEnabled={false}
         listening={editMode}
@@ -88,7 +113,7 @@ const TileShape = React.memo(
         x={dx}
         y={dy}
         onDragEnd={handleDragEnd}
-        shadowColor={editMode ? '#F59E0B' : undefined}
+        shadowColor={editMode ? EDIT_COLOR : undefined}
         shadowBlur={editMode ? 4 / scale : 0}
         shadowEnabled={editMode}
       />
@@ -110,6 +135,9 @@ export default function TileCanvas() {
   const setRoomWidthMM = useTileFlowStore((s) => s.setRoomWidthMM);
   const setRoomHeightMM = useTileFlowStore((s) => s.setRoomHeightMM);
   const system = useTileFlowStore((s) => s.system);
+  const pattern = useTileFlowStore((s) => s.tileConfig.pattern);
+  const alignment = useTileFlowStore((s) => s.alignment);
+  const setAlignment = useTileFlowStore((s) => s.setAlignment);
   const editMode = useTileFlowStore((s) => s.editMode);
   const toggleEditMode = useTileFlowStore((s) => s.toggleEditMode);
   const manualOffsets = useTileFlowStore((s) => s.manualOffsets);
@@ -280,84 +308,117 @@ export default function TileCanvas() {
 
   return (
     <div ref={containerRef} className="absolute inset-0">
-      {/* Edit mode toolbar */}
-      <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
-        <button
-          onClick={toggleEditMode}
-          className={`px-3 py-1.5 text-xs font-medium rounded shadow-lg transition-colors ${
-            editMode
-              ? 'bg-amber-500 text-black'
-              : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-          }`}
-        >
-          {editMode ? '✎ Edit Mode ON' : '✎ Edit Mode'}
-        </button>
-        {editMode && (
-          <span className="px-2 py-1 text-[11px] rounded bg-gray-900/80 text-amber-300">
-            Drag individual tiles to fine-tune
-          </span>
-        )}
-        {editMode && Object.keys(manualOffsets).length > 0 && (
+      {/* ── Toolbar: left pill — pattern + alignment ───────────────── */}
+      <div
+        className="absolute top-3 left-3 z-10 flex items-center gap-1 rounded-full px-1.5 py-1 text-white shadow-lg"
+        style={PILL_STYLE}
+      >
+        <span className="px-2.5 text-[12px] font-medium text-white/90 select-none">
+          {PATTERN_LABELS[pattern]}
+        </span>
+        <span className="h-4 w-px bg-white/15" />
+        {ALIGNMENTS.map(({ value, label, title }) => (
           <button
-            onClick={clearManualOffsets}
-            className="px-3 py-1.5 text-xs font-medium rounded shadow-lg bg-red-600/80 text-white hover:bg-red-500 transition-colors"
+            key={value}
+            onClick={() => setAlignment(value)}
+            title={title}
+            className={`px-2.5 py-1 text-[12px] font-medium rounded-full transition-colors ${
+              alignment === value
+                ? 'bg-white text-ink'
+                : 'text-white/70 hover:text-white hover:bg-white/10'
+            }`}
           >
-            Reset Positions
+            {label}
           </button>
-        )}
+        ))}
         {isComputing && (
-          <span className="px-2 py-1 text-[11px] rounded bg-gray-900/80 text-blue-300 animate-pulse">
+          <span className="px-2 text-[11px] text-white/60 animate-pulse select-none">
             computing…
           </span>
         )}
       </div>
 
-      {/* Zoom controls */}
-      <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-gray-900/90 rounded shadow-lg p-1">
+      {/* ── Toolbar: right pill — zoom + fit + edit toggle ─────────── */}
+      <div
+        className="absolute top-3 right-3 z-10 flex items-center gap-1 rounded-full px-1.5 py-1 text-white shadow-lg"
+        style={PILL_STYLE}
+      >
         <button
           onClick={() => zoomButtons(1 / 1.25)}
           title="Zoom out"
-          className="w-7 h-7 text-sm rounded text-gray-300 hover:bg-gray-700 transition-colors"
+          className="w-7 h-7 text-sm rounded-full text-white/80 hover:bg-white/10 transition-colors"
         >
           −
         </button>
-        <span className="w-12 text-center text-[11px] text-gray-400 font-mono select-none">
+        <span className="w-12 text-center text-[11px] text-white/70 font-mono select-none">
           {Math.round(scale * 100 * 10) / 10}%
         </span>
         <button
           onClick={() => zoomButtons(1.25)}
           title="Zoom in"
-          className="w-7 h-7 text-sm rounded text-gray-300 hover:bg-gray-700 transition-colors"
+          className="w-7 h-7 text-sm rounded-full text-white/80 hover:bg-white/10 transition-colors"
         >
           +
         </button>
         <button
           onClick={fitToScreen}
           title="Fit room to screen"
-          className="px-2 h-7 text-[11px] font-medium rounded text-gray-300 hover:bg-gray-700 transition-colors"
+          className="px-2.5 h-7 text-[12px] font-medium rounded-full text-white/80 hover:bg-white/10 transition-colors"
         >
           Fit
         </button>
+        <span className="h-4 w-px bg-white/15" />
+        <button
+          onClick={toggleEditMode}
+          title="Drag individual tiles to fine-tune"
+          className={`px-2.5 h-7 text-[12px] font-medium rounded-full transition-colors ${
+            editMode
+              ? 'bg-amber-400 text-ink'
+              : 'text-white/80 hover:bg-white/10'
+          }`}
+        >
+          ✎ Edit tiles
+        </button>
       </div>
 
-      {/* Legend */}
-      <div className="absolute bottom-3 left-3 z-10 flex items-center gap-3 bg-gray-900/90 rounded shadow-lg px-3 py-1.5">
-        <span className="flex items-center gap-1.5 text-[11px] text-gray-300">
+      {/* Edit-mode helper + reset (only while editing) */}
+      {editMode && (
+        <div className="absolute top-[60px] right-3 z-10 flex items-center gap-2">
+          <span
+            className="px-2.5 py-1 text-[11px] rounded-full text-amber-300 shadow-lg"
+            style={PILL_STYLE}
+          >
+            Drag individual tiles to fine-tune
+          </span>
+          {Object.keys(manualOffsets).length > 0 && (
+            <button
+              onClick={clearManualOffsets}
+              className="px-2.5 py-1 text-[11px] font-medium rounded-full shadow-lg bg-red-500/85 text-white hover:bg-red-500 transition-colors"
+            >
+              Reset positions
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Legend chip — top-left, below the toolbar pill */}
+      <div
+        className="absolute top-[60px] left-3 z-10 flex items-center gap-3 rounded-full px-3 py-1.5 text-white shadow-lg"
+        style={PILL_STYLE}
+      >
+        <span className="flex items-center gap-1.5 text-[11px] text-white/80">
           <span
             className="w-3 h-3 rounded-sm"
             style={{ background: FULL_TILE_COLOR }}
           />
           Full tile
         </span>
-        <span className="flex items-center gap-1.5 text-[11px] text-gray-300">
+        <span className="flex items-center gap-1.5 text-[11px] text-white/80">
           <span
             className="w-3 h-3 rounded-sm"
             style={{ background: CUT_TILE_COLOR }}
           />
           Cut tile
-        </span>
-        <span className="text-[11px] text-gray-500">
-          Drag edges to resize · scroll to zoom · drag to pan
         </span>
       </div>
 
@@ -382,7 +443,7 @@ export default function TileCanvas() {
             y={0}
             width={room.width}
             height={room.height}
-            fill="#1E293B"
+            fill={ROOM_FILL_COLOR}
             stroke={ROOM_BORDER_COLOR}
             strokeWidth={2 / scale}
           />
@@ -459,7 +520,7 @@ export default function TileCanvas() {
             width={room.width}
             text={formatDisplayFromMM(room.width, roomUnit.unit, roomUnit.imperialFormat)}
             fontSize={14 / scale}
-            fill="#94A3B8"
+            fill={DIM_LABEL_COLOR}
             align="center"
             listening={false}
           />
@@ -468,7 +529,7 @@ export default function TileCanvas() {
             y={room.height / 2}
             text={formatDisplayFromMM(room.height, roomUnit.unit, roomUnit.imperialFormat)}
             fontSize={14 / scale}
-            fill="#94A3B8"
+            fill={DIM_LABEL_COLOR}
             rotation={-90}
             listening={false}
           />

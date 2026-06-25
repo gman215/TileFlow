@@ -8,7 +8,7 @@
   }
 
   body {
-    @apply m-0 p-0 font-sans antialiased;
+    @apply m-0 p-0 font-sans antialiased bg-shell text-ink;
     min-height: 100vh;
   }
 
@@ -20,43 +20,63 @@
 }
 
 @layer components {
+  /* Light grouped section — no heavy card chrome */
   .panel {
-    @apply bg-gray-900 border border-gray-800 rounded-lg p-4;
+    @apply bg-panel p-4;
+  }
+
+  /* Sentence-case section header: 12px / 600 */
+  .section-header {
+    @apply text-xs font-semibold text-ink;
   }
 
   .input-label {
-    @apply text-xs font-medium text-gray-400 uppercase tracking-wider mb-1;
+    @apply text-xs font-medium text-ink-secondary mb-1;
   }
 
   .input-field {
-    @apply w-full bg-gray-800 border border-gray-700 rounded px-3 py-2
-           text-sm text-gray-100 outline-none
-           focus:border-blue-500 focus:ring-1 focus:ring-blue-500
+    @apply w-full bg-[#F7F6F3] border border-hairline rounded-lg px-3 py-2
+           text-sm text-ink outline-none
+           focus:border-accent focus:ring-1 focus:ring-accent
            transition-colors;
   }
 
   .btn {
-    @apply px-4 py-2 rounded font-medium text-sm transition-colors
+    @apply px-4 py-2 rounded-lg font-medium text-sm transition-colors
            cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
+  /* Ink primary — the only filled action button */
   .btn-primary {
-    @apply btn bg-blue-600 hover:bg-blue-500 text-white;
+    @apply btn bg-ink hover:bg-[#333230] text-white;
   }
 
   .btn-secondary {
-    @apply btn bg-gray-700 hover:bg-gray-600 text-gray-200;
+    @apply btn bg-[#F0EFEB] hover:bg-hairline text-[#57554F] border border-hairline;
   }
 
   .stat-card {
-    @apply bg-gray-800 rounded-lg p-3 text-center;
+    @apply bg-[#F7F6F3] rounded-lg p-3;
   }
 
   .stat-value {
-    @apply text-xl font-bold text-white;
+    @apply text-xl font-bold text-ink font-mono;
   }
 
   .stat-label {
-    @apply text-xs text-gray-400 mt-1;
+    @apply text-xs text-ink-secondary mt-1;
+  }
+
+  /* Segmented control segments (presets, toggles, alignment, pattern) */
+  .seg {
+    @apply font-medium transition-colors rounded-lg border;
+  }
+
+  .seg-idle {
+    @apply bg-[#F0EFEB] text-[#57554F] border-hairline hover:bg-hairline;
+  }
+
+  .seg-active {
+    @apply bg-ink text-white border-ink;
   }
 }
