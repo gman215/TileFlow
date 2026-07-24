@@ -9,8 +9,24 @@
  * to find the best alignment.
  */
 
-import { Polygon, Room, TileConfig, AlignmentMode } from '../types';
-import { rectToPolygon, rotatePolygon } from '../utils/math';
+import { Polygon, Room, TileConfig, AlignmentMode, Vec2 } from '../types';
+import {
+  rectToPolygon,
+  rotatePolygon,
+  rotatePoint,
+  translatePolygon,
+} from '../utils/math';
+
+/**
+ * The frame the pattern is set out from: where the grid is anchored and which
+ * way it runs. Comes from the reference wall an installer picks, so the layout
+ * squares to the main sight line instead of to the bounding box.
+ */
+export interface PatternFrame {
+  origin: Vec2;
+  /** Grid direction in radians; 0 keeps the pattern axis-aligned */
+  angle: number;
+}
 
 export interface PatternGeneratorParams {
   tileConfig: TileConfig;
@@ -22,14 +38,60 @@ export interface PatternGeneratorParams {
   offsetX: number;
   /** Y offset to shift the entire grid (optimization parameter) */
   offsetY: number;
+  /** Set out from this wall instead of the area centre */
+  frame?: PatternFrame;
 }
 
 /**
  * Generate tile polygons for a given pattern.
  * Returns an array of unclipped tile polygons.
+ *
+ * Without a frame the pattern is anchored on the area's centre — every
+ * generator measures its offset from there, which is what makes the alignment
+ * modes mean the same thing across all five patterns. With a frame, the
+ * pattern is generated in the frame's own rotated coordinates and mapped back,
+ * so it runs parallel to the reference wall and is anchored on that wall.
  */
 export function generateTiles(params: PatternGeneratorParams): Polygon[] {
-  const { tileConfig, areaWidth, areaHeight } = params;
+  const { frame, areaWidth, areaHeight } = params;
+  if (!frame) return generateForArea(params);
+
+  const { origin, angle } = frame;
+
+  // The area's corners, seen in the frame's rotated coordinates. Generating
+  // over just this box keeps the tile count close to the un-rotated case.
+  const corners: Vec2[] = [
+    { x: 0, y: 0 },
+    { x: areaWidth, y: 0 },
+    { x: areaWidth, y: areaHeight },
+    { x: 0, y: areaHeight },
+  ].map((p) => rotatePoint(p, origin, -angle));
+
+  const minX = Math.min(...corners.map((p) => p.x));
+  const maxX = Math.max(...corners.map((p) => p.x));
+  const minY = Math.min(...corners.map((p) => p.y));
+  const maxY = Math.max(...corners.map((p) => p.y));
+  const width = maxX - minX;
+  const height = maxY - minY;
+
+  // Generators anchor on their area's centre; shift the offset so the anchor
+  // lands on the frame origin instead.
+  const local = generateForArea({
+    ...params,
+    areaWidth: width,
+    areaHeight: height,
+    offsetX: params.offsetX + (origin.x - minX) - width / 2,
+    offsetY: params.offsetY + (origin.y - minY) - height / 2,
+  });
+
+  return local.map((tile) =>
+    rotatePolygon(translatePolygon(tile, minX, minY), origin, angle)
+  );
+}
+
+/** Dispatch to the pattern generator, in whatever coordinates it is handed. */
+function generateForArea(params: PatternGeneratorParams): Polygon[] {
+  const { tileConfig } = params;
 
   let tiles: Polygon[];
   switch (tileConfig.pattern) {
@@ -56,21 +118,49 @@ export function generateTiles(params: PatternGeneratorParams): Polygon[] {
 }
 
 /**
+ * Grid indices covering [0, extent] for a lattice anchored at `origin`,
+ * with a tile's worth of margin so shifted tiles still reach the edges.
+ */
+function indexRange(
+  origin: number,
+  extent: number,
+  step: number
+): { min: number; max: number } {
+  return {
+    min: Math.floor(-origin / step) - 1,
+    max: Math.ceil((extent - origin) / step) + 1,
+  };
+}
+
+/**
  * Standard grid pattern: tiles placed in a regular grid.
+ *
+ * The lattice is anchored on the area's centre, so `offsetX/offsetY` position
+ * a tile corner relative to that centre — the same convention every other
+ * generator here uses, and what lets one alignment rule serve all patterns.
  */
 function generateGrid(params: PatternGeneratorParams): Polygon[] {
   const { tileConfig, areaWidth, areaHeight, offsetX, offsetY } = params;
   const tw = tileConfig.width + tileConfig.grout;
   const th = tileConfig.height + tileConfig.grout;
   const tiles: Polygon[] = [];
+  if (tw <= 0 || th <= 0) return tiles;
 
-  // Start from negative margin to cover shifted tiles
-  const startX = -tw + (offsetX % tw);
-  const startY = -th + (offsetY % th);
+  const originX = areaWidth / 2 + offsetX;
+  const originY = areaHeight / 2 + offsetY;
+  const cols = indexRange(originX, areaWidth, tw);
+  const rows = indexRange(originY, areaHeight, th);
 
-  for (let y = startY; y < areaHeight + th; y += th) {
-    for (let x = startX; x < areaWidth + tw; x += tw) {
-      tiles.push(rectToPolygon(x, y, tileConfig.width, tileConfig.height));
+  for (let j = rows.min; j <= rows.max; j++) {
+    for (let i = cols.min; i <= cols.max; i++) {
+      tiles.push(
+        rectToPolygon(
+          originX + i * tw,
+          originY + j * th,
+          tileConfig.width,
+          tileConfig.height
+        )
+      );
     }
   }
 
@@ -78,7 +168,7 @@ function generateGrid(params: PatternGeneratorParams): Polygon[] {
 }
 
 /**
- * Offset pattern: even rows are shifted by `fraction` of the tile width.
+ * Offset pattern: alternate rows are shifted by `fraction` of the tile width.
  * fraction=0.5 → 1/2 offset (brick bond)
  * fraction=1/3 → 1/3 offset
  */
@@ -90,17 +180,27 @@ function generateOffset(
   const tw = tileConfig.width + tileConfig.grout;
   const th = tileConfig.height + tileConfig.grout;
   const tiles: Polygon[] = [];
+  if (tw <= 0 || th <= 0) return tiles;
 
-  const startX = -tw * 2 + (offsetX % tw);
-  const startY = -th + (offsetY % th);
+  const originX = areaWidth / 2 + offsetX;
+  const originY = areaHeight / 2 + offsetY;
+  const cols = indexRange(originX, areaWidth, tw);
+  const rows = indexRange(originY, areaHeight, th);
 
-  let rowIndex = 0;
-  for (let y = startY; y < areaHeight + th; y += th) {
-    const rowOffset = (rowIndex % 2 === 1) ? tw * fraction : 0;
-    for (let x = startX + rowOffset; x < areaWidth + tw * 2; x += tw) {
-      tiles.push(rectToPolygon(x, y, tileConfig.width, tileConfig.height));
+  for (let j = rows.min; j <= rows.max; j++) {
+    // Positive modulo: row indices go negative above the anchor row.
+    const staggered = ((j % 2) + 2) % 2 === 1;
+    const rowOffset = staggered ? tw * fraction : 0;
+    for (let i = cols.min - 1; i <= cols.max; i++) {
+      tiles.push(
+        rectToPolygon(
+          originX + i * tw + rowOffset,
+          originY + j * th,
+          tileConfig.width,
+          tileConfig.height
+        )
+      );
     }
-    rowIndex++;
   }
 
   return tiles;
@@ -237,26 +337,32 @@ function mod(a: number, n: number): number {
 }
 
 /**
- * Alignment for the rotated patterns (herringbone, diagonal-45).
+ * Compute the grid offset that aligns the layout to the room:
+ *  - `center-tile`: a full tile is centered on the anchor
+ *  - `center-grout`: a grout joint runs through the anchor
  *
- * Both lay their grid out around an origin O = roomCentre + offset and only
- * then rotate about the room centre. Rotation about the centre leaves the
- * centre fixed, so an alignment arranged in the pre-rotation frame still holds
- * after the rotation.
+ * The anchor is the area's centre, or the reference wall when one is picked.
  *
- * The tile at the grid origin spans [O.x, O.x + w] × [O.y, O.y + h], so:
+ * Every generator lays its lattice out from that anchor, and the tile at the
+ * lattice origin spans [O.x, O.x + w] × [O.y, O.y + h], so one rule covers all
+ * five patterns:
  *  - `center-tile`:  offset = (−w/2, −h/2) drops that tile's centre exactly on
- *                    the room centre.
- *  - `center-grout`: offset = (g/2, g/2) puts the room centre on the grout
- *                    crossing at that tile's lower-left corner (with g = 0 it
- *                    lands on the joint lines themselves).
+ *                    the anchor.
+ *  - `center-grout`: offset = (g/2, g/2) puts the anchor on the grout crossing
+ *                    at that tile's lower-left corner (with g = 0 it lands on
+ *                    the joint lines themselves).
+ *
+ * The rotated patterns build their weave around the anchor and only then spin
+ * it about that same point, and rotation about a point leaves it fixed — so an
+ * alignment arranged before the rotation still holds after it.
  *
  * The result is deliberately not reduced modulo a period: the herringbone weave
  * repeats on the lattice spanned by (S, S) and (L, −L), where neither axis on
  * its own is a lattice vector, so wrapping offsetX or offsetY alone would move
  * the weave.
  */
-function rotatedAlignmentOffset(
+export function computeAlignmentOffset(
+  _room: Room,
   config: TileConfig,
   mode: Exclude<AlignmentMode, 'optimize'>
 ): { offsetX: number; offsetY: number } {
@@ -265,42 +371,6 @@ function rotatedAlignmentOffset(
   }
 
   return { offsetX: config.grout / 2, offsetY: config.grout / 2 };
-}
-
-/**
- * Compute the grid offset that aligns the layout to the room:
- *  - `center-tile`: a full tile is centered on the room center
- *  - `center-grout`: a grout joint runs through the room center
- *
- * The rotated patterns have their own derivation (see above). For the
- * axis-aligned ones the offsets come from the basic tile period
- * (width/height + grout), which is exact for grid and running-bond layouts.
- */
-export function computeAlignmentOffset(
-  room: Room,
-  config: TileConfig,
-  mode: Exclude<AlignmentMode, 'optimize'>
-): { offsetX: number; offsetY: number } {
-  if (config.pattern === 'herringbone' || config.pattern === 'diagonal-45') {
-    return rotatedAlignmentOffset(config, mode);
-  }
-
-  const tw = config.width + config.grout;
-  const th = config.height + config.grout;
-
-  // Offset that lands a tile's center on the room center.
-  const tileX = mod(room.width / 2 - config.width / 2, tw);
-  const tileY = mod(room.height / 2 - config.height / 2, th);
-
-  if (mode === 'center-tile') {
-    return { offsetX: tileX, offsetY: tileY };
-  }
-
-  // A grout joint sits half a tile period from a tile center.
-  return {
-    offsetX: mod(tileX - tw / 2, tw),
-    offsetY: mod(tileY - th / 2, th),
-  };
 }
 
 /**

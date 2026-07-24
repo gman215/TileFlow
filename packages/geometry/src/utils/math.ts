@@ -1,4 +1,4 @@
-import { Vec2, Polygon } from '../types';
+import { Vec2, Polygon, RoomShape } from '../types';
 
 /** Compute the signed area of a polygon (positive = CCW) */
 export function signedArea(poly: Polygon): number {
@@ -91,6 +91,144 @@ export function bboxOverlaps(
   b: { minX: number; minY: number; maxX: number; maxY: number }
 ): boolean {
   return a.minX < b.maxX && a.maxX > b.minX && a.minY < b.maxY && a.maxY > b.minY;
+}
+
+/** Bounding box of a set of polygons */
+export function boundingBoxOf(polys: Polygon[]): {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+} {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const poly of polys) {
+    for (const v of poly.vertices) {
+      if (v.x < minX) minX = v.x;
+      if (v.y < minY) minY = v.y;
+      if (v.x > maxX) maxX = v.x;
+      if (v.y > maxY) maxY = v.y;
+    }
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+/**
+ * Is a point inside a polygon? Ray casting, so points exactly on an edge are
+ * decided arbitrarily but consistently — callers only use this well away from
+ * edges (see `prepareClipShape`).
+ */
+export function pointInPolygon(pt: Vec2, poly: Polygon): boolean {
+  const v = poly.vertices;
+  let inside = false;
+  for (let i = 0, j = v.length - 1; i < v.length; j = i++) {
+    const xi = v[i].x,
+      yi = v[i].y,
+      xj = v[j].x,
+      yj = v[j].y;
+    if (
+      yi > pt.y !== yj > pt.y &&
+      pt.x < ((xj - xi) * (pt.y - yi)) / (yj - yi) + xi
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Is a point inside the floor — within the boundary and outside every hole? */
+export function pointInShape(pt: Vec2, shape: RoomShape): boolean {
+  if (!pointInPolygon(pt, shape.boundary)) return false;
+  for (const hole of shape.holes) {
+    if (pointInPolygon(pt, hole)) return false;
+  }
+  return true;
+}
+
+/** Tileable floor area: the boundary minus its cut-outs, in mm² */
+export function shapeArea(shape: RoomShape): number {
+  let area = polygonArea(shape.boundary);
+  for (const hole of shape.holes) {
+    area -= polygonArea(hole);
+  }
+  return Math.max(0, area);
+}
+
+/** Total length of a polygon's edges (closed) */
+export function polygonPerimeter(poly: Polygon): number {
+  const v = poly.vertices;
+  let total = 0;
+  for (let i = 0; i < v.length; i++) {
+    const a = v[i];
+    const b = v[(i + 1) % v.length];
+    total += Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  return total;
+}
+
+/** Centroid of a polygon (area-weighted; falls back to vertex mean if degenerate) */
+export function polygonCentroid(poly: Polygon): Vec2 {
+  const v = poly.vertices;
+  const n = v.length;
+  if (n === 0) return { x: 0, y: 0 };
+
+  let cx = 0,
+    cy = 0,
+    a2 = 0;
+  for (let i = 0; i < n; i++) {
+    const p = v[i];
+    const q = v[(i + 1) % n];
+    const cross = p.x * q.y - q.x * p.y;
+    a2 += cross;
+    cx += (p.x + q.x) * cross;
+    cy += (p.y + q.y) * cross;
+  }
+
+  if (Math.abs(a2) < 1e-9) {
+    return {
+      x: v.reduce((s, p) => s + p.x, 0) / n,
+      y: v.reduce((s, p) => s + p.y, 0) / n,
+    };
+  }
+
+  return { x: cx / (3 * a2), y: cy / (3 * a2) };
+}
+
+/**
+ * Shift a shape so its bounding box starts at (0, 0) and report the resulting
+ * extents. Keeps drawn shapes in the same coordinate space as the room rect.
+ */
+export function normalizeShape(shape: RoomShape): {
+  shape: RoomShape;
+  width: number;
+  height: number;
+} {
+  const bb = boundingBoxOf([shape.boundary, ...shape.holes]);
+  if (!Number.isFinite(bb.minX)) {
+    return { shape, width: 0, height: 0 };
+  }
+
+  const dx = -bb.minX;
+  const dy = -bb.minY;
+  const shift = (p: Polygon): Polygon =>
+    dx === 0 && dy === 0 ? p : translatePolygon(p, dx, dy);
+
+  return {
+    shape: {
+      ...shape,
+      boundary: shift(shape.boundary),
+      holes: shape.holes.map(shift),
+    },
+    width: bb.maxX - bb.minX,
+    height: bb.maxY - bb.minY,
+  };
+}
+
+/** A rectangle expressed as a RoomShape — the implicit shape of a plain room */
+export function rectShape(width: number, height: number): RoomShape {
+  return { boundary: rectToPolygon(0, 0, width, height), holes: [] };
 }
 
 /** Approximate equality */

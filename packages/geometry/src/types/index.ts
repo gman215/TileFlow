@@ -57,12 +57,33 @@ export const ALL_UNITS: Unit[] = [...METRIC_UNITS, ...IMPERIAL_UNITS];
 
 // ─── Room ─────────────────────────────────────────────────────────────────────
 
+/**
+ * A drawn floor outline.
+ *
+ * `boundary` is the outer wall line; `holes` are cut-outs that are not tiled
+ * (kitchen island, column, tub, closet). Both are in mm, in the same
+ * coordinate space as the room's bounding box — that is, normalised so the
+ * bounding box starts at (0, 0), which is where the room rectangle has always
+ * lived.
+ */
+export interface RoomShape {
+  /** Outer outline, implicitly closed */
+  boundary: Polygon;
+  /** Cut-outs, each implicitly closed */
+  holes: Polygon[];
+  /** Index of the wall (boundary edge i → i+1) the layout is squared to */
+  referenceWall?: number;
+}
+
 export interface Room {
-  /** Internal dimensions always stored in mm */
+  /**
+   * Internal dimensions always stored in mm. With a `shape` present these are
+   * its bounding box, so view fitting and pattern coverage keep working.
+   */
   width: number;
   height: number;
-  /** Future: polygon rooms */
-  boundary?: Polygon;
+  /** When present, the true floor outline; otherwise the room is the rectangle */
+  shape?: RoomShape;
 }
 
 // ─── Tile Configuration ───────────────────────────────────────────────────────
@@ -116,6 +137,12 @@ export interface PlacedTile {
   original: Polygon;
   /** Clipped polygon (may have <4 or >4 vertices after clipping) */
   clipped: Polygon;
+  /**
+   * Every piece the tile was cut into. A concave outline can split one tile
+   * into two disjoint pieces (a narrow doorway does exactly that), so this is
+   * the full truth; `clipped` is the largest piece.
+   */
+  pieces: Polygon[];
   /** Area of the clipped portion in mm² */
   clippedArea: number;
   /** Area of the original tile in mm² */
@@ -176,6 +203,12 @@ export interface LayoutRequest {
   room: Room;
   tileConfig: TileConfig;
   optimizationConfig: OptimizationConfig;
+  /**
+   * Reuse this offset instead of searching. Used while a corner is being
+   * dragged: one layout is a few tens of ms, a full search is hundreds, and
+   * the search re-runs the moment the drag ends anyway.
+   */
+  offset?: { x: number; y: number };
   requestId: string;
 }
 

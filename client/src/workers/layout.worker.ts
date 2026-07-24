@@ -28,8 +28,8 @@ ctx.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
         const result = computeLayout(
           request.room,
           request.tileConfig,
-          0,
-          0,
+          request.offset?.x ?? 0,
+          request.offset?.y ?? 0,
           request.optimizationConfig.weights
         );
         const elapsed = performance.now() - start;

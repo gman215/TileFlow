@@ -16,12 +16,24 @@ A real-time tile layout optimizer that helps users plan tile installations by de
 
 - **5 Tile Patterns** — Grid, ½ Offset (brick bond), ⅓ Offset, Herringbone, and 45° Diagonal
 - **Visual Pattern Previews** — Each pattern shows a live miniature rendered by the geometry engine before you select it
-- **Correct Herringbone** — Classic 45° interlocking weave built from an L-block lattice; gap-free exact tiling for 2:1 tiles (`w + g = 2·(h + g)`), including grout
+- **Correct Herringbone** — Classic 45° interlocking weave built from an L-block lattice (`t1 = (S, S)`, `t2 = (L, −L)`); gap-free exact tiling at any tile ratio, including grout
 - **Layout Alignment** — Choose how the grid sits in the room:
   - **Auto** — Two-phase optimizer searches for the lowest-waste offset
-  - **Center tile** — A full tile is centered on the room
-  - **Center joint** — A grout joint runs through the room center
+  - **Center tile** — A full tile is centered on the anchor
+  - **Center joint** — A grout joint runs through the anchor
+
+  The anchor is the room centre, or the reference wall when one is picked.
 - **Tile Orientation** — Switch between landscape and portrait (e.g. 12×24 in ↔ 24×12 in) with one click
+
+### Room Shapes
+
+- **Draw the floor** — Click corners on the canvas to draw any outline: L-shapes, U-shapes, bays, angled walls. The plain W × H rectangle stays the default; drawing is opt-in via **Draw room**
+- **Snapping** — Corners snap to 90°/45° off the previous corner, to a round increment (10 mm metric / 1 in imperial), and to existing corners; hold **Shift** for a free angle
+- **Type exact lengths** — Type a wall length while drawing to place that corner precisely (`4.2` or `12 ft 6 in`); a live readout shows the current wall length and how far the outline still is from closing
+- **Wall table** — Every wall listed in drawing order with its length; retype any one and the room stays square (the parallel wall absorbs the change, so a rectangle stays a rectangle and an L stays square)
+- **Cut-outs** — Draw islands, columns, tubs or closets that are not tiled; they are excluded from the area, tile count and waste
+- **Square to a wall** — Pick a reference wall (⌗) and the tile grid runs parallel to it, anchored on its midpoint — how a floor is actually set out, rather than to the bounding box
+- **Edit freely** — Drag any corner, undo/redo outline changes, or reset back to a rectangle. Self-crossing outlines and stray cut-outs are flagged before they are tiled
 
 ### Measurements
 
@@ -55,6 +67,7 @@ A real-time tile layout optimizer that helps users plan tile installations by de
 - **Two-Phase Hybrid Optimizer** — Coarse scan + fine refinement to find the best tile offset, evaluated with a configurable scoring function: `score = (α × minCutNorm) − (β × waste%)`
 - **Tunable Weights** — Two sliders, **Prefer larger cuts** (α) and **Penalize waste** (β)
 - **Web Worker Computation** — Geometry engine runs off the main thread with debounced auto-recompute (150 ms) for a responsive UI
+- **Effort Scales to the Room** — The offset search is sized to a fixed clipping budget, and dragging a corner re-clips at the last offset instead of re-searching, so reshaping a busy floor stays live
 - **Live Statistics** — A floating stats card on the canvas leads with two hero figures — **Order to buy (incl. 10%)** and **Waste %** (green ≤ 10%, red > 10%) — backed by a quiet secondary row of full / cut / total tile counts, room area, and compute time
 - **Project Persistence** — Save and load projects via a REST API backed by PostgreSQL
 
@@ -177,7 +190,7 @@ The client calls the API at the relative base `/api` (see `client/src/api/client
 | Model | Description |
 |---|---|
 | **Project** | Top-level entity with name and timestamps |
-| **Room** | 1:1 with Project — width, height (mm), display unit preference (`m` or `feet`) |
+| **Room** | 1:1 with Project — width, height (mm; the bounding box when an outline is drawn), display unit preference (`m` or `feet`), and an optional `shape` JSON holding the drawn outline, its cut-outs and reference wall |
 | **TileConfig** | 1:1 with Project — tile dimensions (mm), grout, pattern, α/β weights |
 | **SavedLayout** | Many per Project — serialized layout result, config snapshot, score, optional label |
 

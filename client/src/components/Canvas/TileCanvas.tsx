@@ -8,8 +8,21 @@ import React, {
 import { Stage, Layer, Rect, Line, Group, Text } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useTileFlowStore } from '../../store/tileFlowStore';
-import type { AlignmentMode, PatternType, PlacedTile, Polygon } from '@tileflow/geometry';
-import { formatDisplayFromMM, roomDisplay } from '../../utils/measurements';
+import type {
+  AlignmentMode,
+  PatternType,
+  PlacedTile,
+  Polygon,
+  Vec2,
+} from '@tileflow/geometry';
+import {
+  formatDisplayFromMM,
+  parseDisplayToMM,
+  roomDisplay,
+} from '../../utils/measurements';
+import { snapPoint, snapGridMM } from '../../utils/snapping';
+import RoomShapeLayer from './RoomShapeLayer';
+import DrawLayer from './DrawLayer';
 
 const FULL_TILE_COLOR = '#8FB3D9';
 const CUT_TILE_COLOR = '#E0A074';
@@ -65,8 +78,9 @@ function polyToFlatPoints(poly: Polygon): number[] {
 }
 
 /**
- * Render a single tile as a Konva Line (closed polygon).
- * When editMode is on, the tile is draggable.
+ * Render a single tile. A tile is usually one polygon, but an odd outline can
+ * cut one into several disjoint pieces — a narrow doorway does exactly that —
+ * so every piece is drawn, and they drag together as one tile.
  */
 const TileShape = React.memo(
   ({
@@ -82,10 +96,10 @@ const TileShape = React.memo(
     offset?: { dx: number; dy: number };
     onDragEnd?: (tileId: number, dx: number, dy: number) => void;
   }) => {
-    const points = useMemo(
-      () => polyToFlatPoints(tile.clipped),
-      [tile.clipped]
-    );
+    const pieces = useMemo(() => {
+      const polys = tile.pieces?.length ? tile.pieces : [tile.clipped];
+      return polys.map(polyToFlatPoints);
+    }, [tile.pieces, tile.clipped]);
 
     const color = tile.isFull ? FULL_TILE_COLOR : CUT_TILE_COLOR;
     const dx = offset?.dx ?? 0;
@@ -101,22 +115,28 @@ const TileShape = React.memo(
     );
 
     return (
-      <Line
-        points={points}
-        closed
-        fill={color}
-        stroke={editMode ? EDIT_COLOR : GROUT_COLOR}
-        strokeWidth={Math.max(0.5, (editMode ? 2 : 1) / scale)}
-        perfectDrawEnabled={false}
-        listening={editMode}
-        draggable={editMode}
+      <Group
         x={dx}
         y={dy}
+        listening={editMode}
+        draggable={editMode}
         onDragEnd={handleDragEnd}
-        shadowColor={editMode ? EDIT_COLOR : undefined}
-        shadowBlur={editMode ? 4 / scale : 0}
-        shadowEnabled={editMode}
-      />
+      >
+        {pieces.map((points, i) => (
+          <Line
+            key={i}
+            points={points}
+            closed
+            fill={color}
+            stroke={editMode ? EDIT_COLOR : GROUT_COLOR}
+            strokeWidth={Math.max(0.5, (editMode ? 2 : 1) / scale)}
+            perfectDrawEnabled={false}
+            shadowColor={editMode ? EDIT_COLOR : undefined}
+            shadowBlur={editMode ? 4 / scale : 0}
+            shadowEnabled={editMode}
+          />
+        ))}
+      </Group>
     );
   }
 );
@@ -144,7 +164,16 @@ export default function TileCanvas() {
   const setManualOffset = useTileFlowStore((s) => s.setManualOffset);
   const clearManualOffsets = useTileFlowStore((s) => s.clearManualOffsets);
 
+  // Room outline drawing
+  const draft = useTileFlowStore((s) => s.draft);
+  const addDraftPoint = useTileFlowStore((s) => s.addDraftPoint);
+  const removeLastDraftPoint = useTileFlowStore((s) => s.removeLastDraftPoint);
+  const cancelDraft = useTileFlowStore((s) => s.cancelDraft);
+  const commitDraft = useTileFlowStore((s) => s.commitDraft);
+
   const roomUnit = roomDisplay(system);
+  const drawing = draft !== null;
+  const shapeEditing = !drawing && !editMode && Boolean(room.shape);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<any>(null);
@@ -260,7 +289,121 @@ export default function TileCanvas() {
     if (container) container.style.cursor = cursor;
   }, []);
 
-  const baseCursor = editMode ? 'default' : 'grab';
+  const baseCursor = drawing ? 'crosshair' : editMode ? 'default' : 'grab';
+
+  useEffect(() => {
+    setCursor(baseCursor);
+  }, [baseCursor, setCursor]);
+
+  // ─── Drawing the room outline ───────────────────────────────────────
+  const [pointerMM, setPointerMM] = useState<Vec2 | null>(null);
+  const [shiftHeld, setShiftHeld] = useState(false);
+  const [lengthText, setLengthText] = useState('');
+  const lengthInputRef = useRef<HTMLInputElement>(null);
+
+  const gridMM = snapGridMM(system);
+
+  /** A typed wall length, in mm, or null when the box is empty/unparseable. */
+  const lockedLengthMM = useMemo(() => {
+    if (!lengthText.trim()) return null;
+    const mm = parseDisplayToMM(lengthText, roomUnit.unit, roomUnit.imperialFormat);
+    return mm !== null && mm > 0 ? mm : null;
+  }, [lengthText, roomUnit.unit, roomUnit.imperialFormat]);
+
+  /** Where the next corner would land, with snapping applied. */
+  const snap = useMemo(() => {
+    if (!draft || !pointerMM) return null;
+    return snapPoint(pointerMM, {
+      anchor: draft.points[draft.points.length - 1] ?? null,
+      vertices: draft.points,
+      gridMM,
+      freeAngle: shiftHeld,
+      scale,
+      lockedLengthMM,
+    });
+  }, [draft, pointerMM, gridMM, shiftHeld, scale, lockedLengthMM]);
+
+  const focusLengthInput = useCallback(() => {
+    // Konva swallows focus on click; keep typing going to the length box.
+    window.requestAnimationFrame(() => lengthInputRef.current?.focus());
+  }, []);
+
+  const placePoint = useCallback(() => {
+    if (!snap) return;
+    if (snap.closesRing) {
+      commitDraft();
+      setLengthText('');
+      return;
+    }
+    addDraftPoint(snap.point);
+    setLengthText('');
+    focusLengthInput();
+  }, [snap, commitDraft, addDraftPoint, focusLengthInput]);
+
+  const handleStagePointerMove = useCallback(() => {
+    if (!drawing) return;
+    const pos = stageRef.current?.getRelativePointerPosition();
+    if (pos) setPointerMM({ x: pos.x, y: pos.y });
+  }, [drawing]);
+
+  const handleStageClick = useCallback(() => {
+    if (!drawing) return;
+    placePoint();
+  }, [drawing, placePoint]);
+
+  // Keyboard while drawing: Esc cancels, Enter closes, Backspace steps back.
+  useEffect(() => {
+    if (!drawing) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftHeld(true);
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelDraft();
+        setLengthText('');
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (lockedLengthMM != null && snap) {
+          placePoint();
+        } else {
+          commitDraft();
+          setLengthText('');
+        }
+      } else if (e.key === 'Backspace' && !lengthText) {
+        e.preventDefault();
+        removeLastDraftPoint();
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftHeld(false);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [
+    drawing,
+    cancelDraft,
+    commitDraft,
+    removeLastDraftPoint,
+    placePoint,
+    lockedLengthMM,
+    lengthText,
+    snap,
+  ]);
+
+  // Give the length box focus as soon as drawing starts.
+  useEffect(() => {
+    if (drawing) focusLengthInput();
+    else {
+      setPointerMM(null);
+      setLengthText('');
+    }
+  }, [drawing, focusLengthInput]);
 
   // ─── Room resize handles ────────────────────────────────────────────
   const handleRightEdgeDrag = useCallback(
@@ -401,6 +544,46 @@ export default function TileCanvas() {
         </div>
       )}
 
+      {/* Draw-mode HUD — length entry + what the keys do */}
+      {draft && (
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2"
+          style={{ top: 14 }}
+        >
+          <div
+            className="flex items-center gap-2 rounded-full px-3 py-1.5 text-white shadow-lg"
+            style={PILL_STYLE}
+          >
+            <span className="text-[12px] font-medium text-amber-300">
+              {draft.kind === 'boundary' ? 'Drawing room' : 'Drawing cut-out'}
+            </span>
+            <span className="h-4 w-px bg-white/15" />
+            <label className="flex items-center gap-1.5 text-[12px] text-white/70">
+              Wall length
+              <input
+                ref={lengthInputRef}
+                value={lengthText}
+                onChange={(e) => setLengthText(e.target.value)}
+                placeholder={roomUnit.unit === 'feet' ? '12 ft 6 in' : '4.2'}
+                className="w-28 rounded-md bg-white/10 px-2 py-1 text-[12px] font-mono text-white
+                           placeholder-white/30 outline-none focus:bg-white/15"
+              />
+            </label>
+            <span className="text-[11px] text-white/45">
+              {lockedLengthMM != null ? 'locked — click to place' : 'type to lock'}
+            </span>
+          </div>
+
+          <div
+            className="rounded-full px-3 py-1 text-[11px] text-white/60 shadow-lg"
+            style={PILL_STYLE}
+          >
+            Click corners · Shift = free angle · Backspace undoes · Enter closes ·
+            Esc cancels
+          </div>
+        </div>
+      )}
+
       {/* Legend chip — top-left, below the toolbar pill */}
       <div
         className="absolute top-[60px] left-3 z-10 flex items-center gap-3 rounded-full px-3 py-1.5 text-white shadow-lg"
@@ -430,109 +613,152 @@ export default function TileCanvas() {
         y={effectiveView.y}
         scaleX={scale}
         scaleY={scale}
-        draggable={!editMode}
+        draggable={!editMode && !drawing}
         onDragEnd={handleStageDragEnd}
         onWheel={handleWheel}
+        onMouseMove={handleStagePointerMove}
+        onClick={handleStageClick}
+        onTap={handleStageClick}
         onMouseEnter={() => setCursor(baseCursor)}
         style={{ background: BG_COLOR }}
       >
         <Layer>
-          {/* Room background */}
-          <Rect
-            x={0}
-            y={0}
-            width={room.width}
-            height={room.height}
-            fill={ROOM_FILL_COLOR}
-            stroke={ROOM_BORDER_COLOR}
-            strokeWidth={2 / scale}
-          />
+          {/* Floor — the drawn outline, or the plain rectangle */}
+          {room.shape ? (
+            <Line
+              points={polyToFlatPoints(room.shape.boundary)}
+              closed
+              fill={ROOM_FILL_COLOR}
+              listening={false}
+              perfectDrawEnabled={false}
+            />
+          ) : (
+            <Rect
+              x={0}
+              y={0}
+              width={room.width}
+              height={room.height}
+              fill={ROOM_FILL_COLOR}
+              stroke={ROOM_BORDER_COLOR}
+              strokeWidth={2 / scale}
+            />
+          )}
 
           {/* Tiles */}
           {tileElements}
 
-          {/* Room border overlay */}
-          <Rect
-            x={0}
-            y={0}
-            width={room.width}
-            height={room.height}
-            fill="transparent"
-            stroke={ROOM_BORDER_COLOR}
-            strokeWidth={2 / scale}
-            listening={false}
-          />
+          {/* Outline, wall dimensions, cut-outs and corner handles */}
+          {room.shape ? (
+            <RoomShapeLayer
+              shape={room.shape}
+              scale={scale}
+              interactive={shapeEditing}
+            />
+          ) : (
+            <>
+              {/* Room border overlay */}
+              <Rect
+                x={0}
+                y={0}
+                width={room.width}
+                height={room.height}
+                fill="transparent"
+                stroke={ROOM_BORDER_COLOR}
+                strokeWidth={2 / scale}
+                listening={false}
+              />
 
-          {/* Resize grip indicators (visual only) */}
-          <Rect
-            x={room.width - 2 / scale}
-            y={room.height / 2 - gripLength / 2}
-            width={5 / scale}
-            height={gripLength}
-            cornerRadius={3 / scale}
-            fill={HANDLE_COLOR}
-            listening={false}
-          />
-          <Rect
-            x={room.width / 2 - gripLength / 2}
-            y={room.height - 2 / scale}
-            width={gripLength}
-            height={5 / scale}
-            cornerRadius={3 / scale}
-            fill={HANDLE_COLOR}
-            listening={false}
-          />
+              {/* Resize grip indicators (visual only) */}
+              <Rect
+                x={room.width - 2 / scale}
+                y={room.height / 2 - gripLength / 2}
+                width={5 / scale}
+                height={gripLength}
+                cornerRadius={3 / scale}
+                fill={HANDLE_COLOR}
+                listening={false}
+              />
+              <Rect
+                x={room.width / 2 - gripLength / 2}
+                y={room.height - 2 / scale}
+                width={gripLength}
+                height={5 / scale}
+                cornerRadius={3 / scale}
+                fill={HANDLE_COLOR}
+                listening={false}
+              />
 
-          {/* Resize handle — right edge */}
-          <Rect
-            x={room.width}
-            y={0}
-            width={12 / scale}
-            height={room.height}
-            offsetX={6 / scale}
-            fill="transparent"
-            draggable
-            onDragMove={handleRightEdgeDrag}
-            onMouseEnter={() => setCursor('ew-resize')}
-            onMouseLeave={() => setCursor(baseCursor)}
-            hitStrokeWidth={20 / scale}
-          />
+              {/* Resize handle — right edge */}
+              <Rect
+                x={room.width}
+                y={0}
+                width={12 / scale}
+                height={room.height}
+                offsetX={6 / scale}
+                fill="transparent"
+                draggable={!drawing}
+                onDragMove={handleRightEdgeDrag}
+                onMouseEnter={() => setCursor('ew-resize')}
+                onMouseLeave={() => setCursor(baseCursor)}
+                hitStrokeWidth={20 / scale}
+              />
 
-          {/* Resize handle — bottom edge */}
-          <Rect
-            x={0}
-            y={room.height}
-            width={room.width}
-            height={12 / scale}
-            offsetY={6 / scale}
-            fill="transparent"
-            draggable
-            onDragMove={handleBottomEdgeDrag}
-            onMouseEnter={() => setCursor('ns-resize')}
-            onMouseLeave={() => setCursor(baseCursor)}
-            hitStrokeWidth={20 / scale}
-          />
+              {/* Resize handle — bottom edge */}
+              <Rect
+                x={0}
+                y={room.height}
+                width={room.width}
+                height={12 / scale}
+                offsetY={6 / scale}
+                fill="transparent"
+                draggable={!drawing}
+                onDragMove={handleBottomEdgeDrag}
+                onMouseEnter={() => setCursor('ns-resize')}
+                onMouseLeave={() => setCursor(baseCursor)}
+                hitStrokeWidth={20 / scale}
+              />
 
-          {/* Dimension labels */}
-          <Text
-            x={0}
-            y={-24 / scale}
-            width={room.width}
-            text={formatDisplayFromMM(room.width, roomUnit.unit, roomUnit.imperialFormat)}
-            fontSize={14 / scale}
-            fill={DIM_LABEL_COLOR}
-            align="center"
-            listening={false}
-          />
-          <Text
-            x={-24 / scale}
-            y={room.height / 2}
-            text={formatDisplayFromMM(room.height, roomUnit.unit, roomUnit.imperialFormat)}
-            fontSize={14 / scale}
-            fill={DIM_LABEL_COLOR}
-            rotation={-90}
-            listening={false}
-          />
+              {/* Dimension labels */}
+              <Text
+                x={0}
+                y={-24 / scale}
+                width={room.width}
+                text={formatDisplayFromMM(
+                  room.width,
+                  roomUnit.unit,
+                  roomUnit.imperialFormat
+                )}
+                fontSize={14 / scale}
+                fill={DIM_LABEL_COLOR}
+                align="center"
+                listening={false}
+              />
+              <Text
+                x={-24 / scale}
+                y={room.height / 2}
+                text={formatDisplayFromMM(
+                  room.height,
+                  roomUnit.unit,
+                  roomUnit.imperialFormat
+                )}
+                fontSize={14 / scale}
+                fill={DIM_LABEL_COLOR}
+                rotation={-90}
+                listening={false}
+              />
+            </>
+          )}
+
+          {/* The outline being drawn */}
+          {draft && (
+            <DrawLayer
+              draft={draft}
+              cursor={snap?.point ?? null}
+              willClose={snap?.closesRing ?? false}
+              scale={scale}
+              display={roomUnit}
+            />
+          )}
         </Layer>
       </Stage>
     </div>

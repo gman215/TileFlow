@@ -13,6 +13,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+import type { RoomShape } from '@tileflow/geometry';
+
 export interface ProjectDTO {
   id: string;
   name: string;
@@ -22,6 +24,8 @@ export interface ProjectDTO {
     width: number;
     height: number;
     unit: string;
+    /** Drawn outline; absent for a plain rectangular room */
+    shape?: RoomShape | null;
   } | null;
   tileConfig: {
     width: number;
@@ -40,7 +44,12 @@ export const api = {
 
   createProject: (data: {
     name: string;
-    room: { width: number; height: number; unit: string };
+    room: {
+      width: number;
+      height: number;
+      unit: string;
+      shape?: RoomShape | null;
+    };
     tileConfig: {
       width: number;
       height: number;
@@ -59,7 +68,12 @@ export const api = {
     id: string,
     data: Partial<{
       name: string;
-      room: { width: number; height: number; unit: string };
+      room: {
+      width: number;
+      height: number;
+      unit: string;
+      shape?: RoomShape | null;
+    };
       tileConfig: {
         width: number;
         height: number;

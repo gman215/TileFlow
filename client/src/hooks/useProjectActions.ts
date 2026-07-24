@@ -32,6 +32,9 @@ export function useProjectActions() {
           width: room.width,
           height: room.height,
           unit: system === 'imperial' ? 'feet' : 'm',
+          // null rather than undefined so saving a room that used to have an
+          // outline actually clears it server-side.
+          shape: room.shape ?? null,
         },
         tileConfig: {
           width: tileConfig.width,
@@ -74,9 +77,24 @@ export function useProjectActions() {
 
       if (latest.room) {
         // Server stores dimensions in mm
-        useTileFlowStore.getState().setRoomWidthMM(latest.room.width);
-        useTileFlowStore.getState().setRoomHeightMM(latest.room.height);
-        useTileFlowStore.getState().setSystem(systemForUnit(latest.room.unit as any));
+        const store = useTileFlowStore.getState();
+        const shape = latest.room.shape;
+
+        // Guard the payload: an outline needs at least a triangle to be a room.
+        if (shape && (shape.boundary?.vertices?.length ?? 0) >= 3) {
+          store.setRoomShape({
+            boundary: shape.boundary,
+            holes: shape.holes ?? [],
+            referenceWall: shape.referenceWall,
+          });
+        } else {
+          // Back to a plain rectangle first — width/height are read-only while
+          // an outline is in place.
+          store.setRoomShape(undefined);
+          store.setRoomWidthMM(latest.room.width);
+          store.setRoomHeightMM(latest.room.height);
+        }
+        store.setSystem(systemForUnit(latest.room.unit as any));
       }
       if (latest.tileConfig) {
         const tc = latest.tileConfig;

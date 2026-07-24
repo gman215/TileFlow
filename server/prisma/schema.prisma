@@ -26,12 +26,14 @@ model Room {
   projectId String @unique
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  /// Width in mm
+  /// Width in mm — the bounding box when a shape is drawn
   width  Float
-  /// Height in mm
+  /// Height in mm — the bounding box when a shape is drawn
   height Float
   /// Display unit preference
   unit   String @default("mm")
+  /// Drawn outline: { boundary, holes, referenceWall }. Null = plain rectangle.
+  shape  Json?
 }
 
 model TileConfig {

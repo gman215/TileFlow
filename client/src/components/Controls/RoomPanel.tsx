@@ -11,12 +11,24 @@ export default function RoomPanel() {
 
   const display = roomDisplay(system);
   const imperial = system === 'imperial';
+  // With an outline drawn, these report its extents and the outline rules.
+  const drawn = Boolean(room.shape);
 
   return (
     <div className="px-4 py-4 space-y-2.5">
-      <h3 className="section-header">Room</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="section-header">Room</h3>
+        {drawn && (
+          <span className="text-[10px] text-ink-muted" title="Width and depth follow the drawn outline">
+            outline · extents
+          </span>
+        )}
+      </div>
 
-      <div className="flex items-center gap-1.5">
+      <div
+        className={`flex items-center gap-1.5 ${drawn ? 'opacity-55' : ''}`}
+        title={drawn ? 'Edit the wall lengths under Shape, or reset to a rectangle' : undefined}
+      >
         <DimensionField
           label="W"
           mm={room.width}
@@ -41,7 +53,9 @@ export default function RoomPanel() {
       </div>
 
       <p className="text-[10px] text-ink-muted">
-        {imperial
+        {drawn
+          ? 'Extents of the drawn outline — edit wall lengths under Shape.'
+          : imperial
           ? 'Type like 12 ft 6 in · ↑↓ nudges by 1 in (Shift ×10)'
           : '↑↓ nudges by 10 cm (Shift ×10) · or drag the room edges'}
       </p>

@@ -70,14 +70,27 @@ export function useLayoutWorker() {
       latestRequestIdRef.current = requestId;
       setIsComputing(true);
 
-      const request: WorkerRequest = {
-        type: 'optimize',
-        room,
-        tileConfig,
-        optimizationConfig,
-        alignment,
-        requestId,
-      };
+      // While a corner is being dragged, keep the last offset and just re-clip
+      // — the full search runs again the moment the drag ends.
+      const { interacting, layout } = useTileFlowStore.getState();
+      const request: WorkerRequest =
+        interacting && layout
+          ? {
+              type: 'compute-layout',
+              room,
+              tileConfig,
+              optimizationConfig,
+              offset: { x: layout.offsetX, y: layout.offsetY },
+              requestId,
+            }
+          : {
+              type: 'optimize',
+              room,
+              tileConfig,
+              optimizationConfig,
+              alignment,
+              requestId,
+            };
 
       workerRef.current.postMessage(request);
     },
@@ -103,7 +116,8 @@ export function useLayoutWorker() {
     [dispatch]
   );
 
-  // Auto-recompute when store values change
+  // Auto-recompute when store values change. `interacting` is included so
+  // that letting go of a corner re-runs the full search.
   useEffect(() => {
     const unsub = useTileFlowStore.subscribe(
       (state) => ({
@@ -111,9 +125,16 @@ export function useLayoutWorker() {
         tileConfig: state.tileConfig,
         optimizationConfig: state.optimizationConfig,
         alignment: state.alignment,
+        interacting: state.interacting,
       }),
-      ({ room, tileConfig, optimizationConfig, alignment }) => {
-        debouncedDispatch(room, tileConfig, optimizationConfig, alignment, 150);
+      ({ room, tileConfig, optimizationConfig, alignment, interacting }) => {
+        debouncedDispatch(
+          room,
+          tileConfig,
+          optimizationConfig,
+          alignment,
+          interacting ? 40 : 150
+        );
       },
       { equalityFn: (a, b) => JSON.stringify(a) === JSON.stringify(b) }
     );

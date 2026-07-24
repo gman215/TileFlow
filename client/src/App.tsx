@@ -1,6 +1,7 @@
 import React from 'react';
 import TileCanvas from './components/Canvas/TileCanvas';
 import RoomPanel from './components/Controls/RoomPanel';
+import ShapePanel from './components/Controls/ShapePanel';
 import TilePanel from './components/Controls/TilePanel';
 import OptimizationPanel from './components/Controls/OptimizationPanel';
 import StatsPanel from './components/Controls/StatsPanel';
@@ -90,6 +91,7 @@ export default function App() {
         {/* Sidebar — grouped sections split by hairline dividers */}
         <aside className="w-[312px] flex-shrink-0 overflow-y-auto bg-white border-r border-hairline divide-y divide-divider">
           <RoomPanel />
+          <ShapePanel />
           <TilePanel />
           <OptimizationPanel />
           <ProjectPanel />

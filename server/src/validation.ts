@@ -8,10 +8,28 @@ export const PatternSchema = z.enum([
   'diagonal-45',
 ]);
 
+/** A drawn outline. Vertex counts are capped so a bad payload can't blow up. */
+const PointSchema = z.object({
+  x: z.number().finite().min(-1_000_000).max(1_000_000),
+  y: z.number().finite().min(-1_000_000).max(1_000_000),
+});
+
+const PolygonSchema = z.object({
+  vertices: z.array(PointSchema).min(3).max(500),
+});
+
+export const RoomShapeSchema = z.object({
+  boundary: PolygonSchema,
+  holes: z.array(PolygonSchema).max(50).default([]),
+  referenceWall: z.number().int().min(0).max(499).optional(),
+});
+
 export const RoomSchema = z.object({
   width: z.number().positive().max(100000),
   height: z.number().positive().max(100000),
   unit: z.enum(['mm', 'cm', 'm', 'inches', 'feet']).default('mm'),
+  /** Omitted for a plain rectangular room */
+  shape: RoomShapeSchema.nullish(),
 });
 
 export const TileConfigSchema = z.object({
