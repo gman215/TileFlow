@@ -101,14 +101,16 @@ export function computeLayout(
     totalTileArea += clippedArea;
   }
 
+  // Reported as 0 when nothing was cut — there is no cut piece to measure.
   if (smallestCutPiece === Infinity) smallestCutPiece = 0;
 
-  const wastePercentage =
-    roomArea > 0 ? Math.max(0, (totalTileArea - roomArea) / totalTileArea) : 0;
-
-  // For score calculation: normalize smallest cut piece
   const tileArea = tileConfig.width * tileConfig.height;
-  const normalizedMinCut = tileArea > 0 ? smallestCutPiece / tileArea : 0;
+  // A layout that needs no cuts at all is the ideal, so the min-cut term has to
+  // sit at its maximum. Scoring the `smallestCutPiece = 0` sentinel directly
+  // would rank a perfect fit alongside an infinitely thin sliver — the worst
+  // case — and make the search walk away from a zero-waste layout.
+  const normalizedMinCut =
+    cutTileCount === 0 ? 1 : tileArea > 0 ? smallestCutPiece / tileArea : 0;
   const wasteRatio = cutTileCount > 0
     ? 1 - totalTileArea / ((fullTileCount + cutTileCount) * tileArea)
     : 0;

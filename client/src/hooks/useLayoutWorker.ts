@@ -40,6 +40,9 @@ export function useLayoutWorker() {
 
       if (response.type === 'layout-result' || response.type === 'optimize-result') {
         setLayout(response.result, response.computeTimeMs);
+      } else {
+        console.error('Layout worker failed:', response.message);
+        setIsComputing(false);
       }
     });
 
@@ -114,6 +117,14 @@ export function useLayoutWorker() {
       }, delay);
     },
     [dispatch]
+  );
+
+  // Drop any dispatch still queued when the hook goes away.
+  useEffect(
+    () => () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    },
+    []
   );
 
   // Auto-recompute when store values change. `interacting` is included so

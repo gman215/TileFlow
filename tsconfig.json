@@ -1,4 +1,9 @@
 {
+  // Solution-style root: it compiles nothing itself, it just points at the
+  // workspaces. Without "files": [] it falls back to globbing the whole repo
+  // and every .tsx in the client fails as an unbuilt reference output.
+  // Each workspace is built by its own `npm run build`.
+  "files": [],
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -9,7 +14,6 @@
   },
   "references": [
     { "path": "./packages/geometry" },
-    { "path": "./packages/worker" },
     { "path": "./client" },
     { "path": "./server" }
   ]

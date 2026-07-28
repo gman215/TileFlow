@@ -89,6 +89,14 @@ ctx.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
       }
     }
   } catch (err) {
+    // Always answer. A silent failure leaves the UI spinning on "computing…"
+    // with no way back short of a reload.
     console.error('Worker error:', err);
+    const response: WorkerResponse = {
+      type: 'error',
+      requestId: request.requestId,
+      message: err instanceof Error ? err.message : String(err),
+    };
+    ctx.postMessage(response);
   }
 });

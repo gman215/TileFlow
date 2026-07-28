@@ -237,5 +237,18 @@ export interface OptimizeResponse {
   candidatesEvaluated: number;
 }
 
+/**
+ * A request that failed. Without this the main thread has no way to tell a
+ * slow layout from a dead one, and the "computing" state never clears.
+ */
+export interface WorkerErrorResponse {
+  type: 'error';
+  requestId: string;
+  message: string;
+}
+
 export type WorkerRequest = LayoutRequest | OptimizeRequest;
-export type WorkerResponse = LayoutResponse | OptimizeResponse;
+export type WorkerResponse =
+  | LayoutResponse
+  | OptimizeResponse
+  | WorkerErrorResponse;

@@ -7,7 +7,7 @@
  * the tiles that actually straddle a wall (see `prepareClipShape`).
  */
 
-import * as polygonClipping from 'polygon-clipping';
+import polygonClipping from 'polygon-clipping';
 import type { MultiPolygon, Ring } from 'polygon-clipping';
 import { Polygon, Vec2, Room, RoomShape } from '../types';
 import {
@@ -23,18 +23,13 @@ import {
 } from '../utils/math';
 
 /**
- * polygon-clipping ships an ESM build with only a default export but type
- * declarations with only named exports, so neither import style works on its
- * own. Take whichever the bundler hands us.
+ * polygon-clipping ships an ESM build whose only export is the default, while
+ * its type declarations name only the individual functions. `esModuleInterop`
+ * bridges the two: the default import types as the declared module and resolves
+ * to the real object under both Node and the bundler, with no phantom named
+ * import for Rollup to warn about.
  */
-const booleanIntersection: (typeof polygonClipping)['intersection'] =
-  (polygonClipping as unknown as { default?: typeof polygonClipping }).default
-    ?.intersection ?? polygonClipping.intersection;
-
-interface Edge {
-  a: Vec2;
-  b: Vec2;
-}
+const booleanIntersection = polygonClipping.intersection;
 
 function isInside(point: Vec2, edgeA: Vec2, edgeB: Vec2): boolean {
   return (edgeB.x - edgeA.x) * (point.y - edgeA.y) -

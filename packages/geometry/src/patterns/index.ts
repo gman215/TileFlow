@@ -331,11 +331,6 @@ function generateDiagonal45(params: PatternGeneratorParams): Polygon[] {
   return tiles;
 }
 
-/** Positive modulo. */
-function mod(a: number, n: number): number {
-  return ((a % n) + n) % n;
-}
-
 /**
  * Compute the grid offset that aligns the layout to the room:
  *  - `center-tile`: a full tile is centered on the anchor

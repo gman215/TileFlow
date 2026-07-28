@@ -414,8 +414,17 @@ export const useTileFlowStore = create<TileFlowState>()(
     isComputing: false,
     computeTimeMs: 0,
 
+    // A tile's id is its index in the layout that produced it, so a recompute
+    // hands the same ids to entirely different tiles. Nudges from the previous
+    // layout have to go with it, or they reappear on unrelated tiles.
     setLayout: (layout: LayoutResult, timeMs: number) =>
-      set({ layout, isComputing: false, computeTimeMs: timeMs }),
+      set((s) => ({
+        layout,
+        isComputing: false,
+        computeTimeMs: timeMs,
+        manualOffsets:
+          Object.keys(s.manualOffsets).length > 0 ? {} : s.manualOffsets,
+      })),
 
     setIsComputing: (v: boolean) => set({ isComputing: v }),
 

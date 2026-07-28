@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../db.js';
-import { validate } from '../middleware/index.js';
+import { validate, asyncHandler } from '../middleware/index.js';
 import {
   CreateProjectSchema,
   UpdateProjectSchema,
@@ -11,36 +11,42 @@ const router = Router();
 
 // ─── List Projects ────────────────────────────────────────────────────────────
 
-router.get('/', async (_req: Request, res: Response) => {
-  const projects = await prisma.project.findMany({
-    orderBy: { updatedAt: 'desc' },
-    include: { room: true, tileConfig: true },
-  });
-  res.json(projects);
-});
+router.get(
+  '/',
+  asyncHandler(async (_req: Request, res: Response) => {
+    const projects = await prisma.project.findMany({
+      orderBy: { updatedAt: 'desc' },
+      include: { room: true, tileConfig: true },
+    });
+    res.json(projects);
+  })
+);
 
 // ─── Get Single Project ───────────────────────────────────────────────────────
 
-router.get('/:id', async (req: Request, res: Response) => {
-  const project = await prisma.project.findUnique({
-    where: { id: req.params.id },
-    include: { room: true, tileConfig: true, layouts: true },
-  });
+router.get(
+  '/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    const project = await prisma.project.findUnique({
+      where: { id: req.params.id },
+      include: { room: true, tileConfig: true, layouts: true },
+    });
 
-  if (!project) {
-    res.status(404).json({ error: 'Project not found' });
-    return;
-  }
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' });
+      return;
+    }
 
-  res.json(project);
-});
+    res.json(project);
+  })
+);
 
 // ─── Create Project ──────────────────────────────────────────────────────────
 
 router.post(
   '/',
   validate(CreateProjectSchema),
-  async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
     const { name, room, tileConfig } = req.body;
 
     const project = await prisma.project.create({
@@ -53,7 +59,7 @@ router.post(
     });
 
     res.status(201).json(project);
-  }
+  })
 );
 
 // ─── Update Project ──────────────────────────────────────────────────────────
@@ -61,7 +67,7 @@ router.post(
 router.put(
   '/:id',
   validate(UpdateProjectSchema),
-  async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
     const { name, room, tileConfig } = req.body;
 
     const project = await prisma.project.update({
@@ -89,22 +95,25 @@ router.put(
     });
 
     res.json(project);
-  }
+  })
 );
 
 // ─── Delete Project ──────────────────────────────────────────────────────────
 
-router.delete('/:id', async (req: Request, res: Response) => {
-  await prisma.project.delete({ where: { id: req.params.id } });
-  res.status(204).send();
-});
+router.delete(
+  '/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    await prisma.project.delete({ where: { id: req.params.id } });
+    res.status(204).send();
+  })
+);
 
 // ─── Save Layout Snapshot ────────────────────────────────────────────────────
 
 router.post(
   '/:id/layouts',
   validate(SaveLayoutSchema),
-  async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
     const layout = await prisma.savedLayout.create({
       data: {
         projectId: req.params.id,
@@ -112,17 +121,20 @@ router.post(
       },
     });
     res.status(201).json(layout);
-  }
+  })
 );
 
 // ─── Get Project Layouts ─────────────────────────────────────────────────────
 
-router.get('/:id/layouts', async (req: Request, res: Response) => {
-  const layouts = await prisma.savedLayout.findMany({
-    where: { projectId: req.params.id },
-    orderBy: { createdAt: 'desc' },
-  });
-  res.json(layouts);
-});
+router.get(
+  '/:id/layouts',
+  asyncHandler(async (req: Request, res: Response) => {
+    const layouts = await prisma.savedLayout.findMany({
+      where: { projectId: req.params.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(layouts);
+  })
+);
 
 export default router;
