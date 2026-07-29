@@ -18,6 +18,7 @@ import {
   setWallLength,
   moveVertex,
   deleteVertex,
+  toMM,
 } from '@tileflow/geometry';
 import type { MeasurementSystem } from '../utils/measurements';
 
@@ -117,15 +118,17 @@ export interface TileFlowState {
 
 // ─── Default Values ───────────────────────────────────────────────────────────
 
+// Defaults are round imperial numbers so the app opens on clean fields
+// (10 ft × 8 ft, 12" tile, 1/8" grout) rather than converted metric values.
 const DEFAULT_ROOM: Room = {
-  width: 3000, // 3m in mm
-  height: 2400, // 2.4m in mm
+  width: toMM(10, 'feet'),
+  height: toMM(8, 'feet'),
 };
 
 const DEFAULT_TILE: TileConfig = {
-  width: 300,
-  height: 300,
-  grout: 3,
+  width: toMM(12, 'inches'),
+  height: toMM(12, 'inches'),
+  grout: toMM(1 / 8, 'inches'),
   pattern: 'grid',
 };
 
@@ -170,7 +173,7 @@ export const useTileFlowStore = create<TileFlowState>()(
     return {
     // Room
     room: DEFAULT_ROOM,
-    system: 'metric' as MeasurementSystem,
+    system: 'imperial' as MeasurementSystem,
 
     setSystem: (s: MeasurementSystem) => set({ system: s }),
 

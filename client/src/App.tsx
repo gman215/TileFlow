@@ -12,8 +12,8 @@ import { useLayoutWorker } from './hooks/useLayoutWorker';
 import type { MeasurementSystem } from './utils/measurements';
 
 const SYSTEMS: { value: MeasurementSystem; label: string }[] = [
-  { value: 'metric', label: 'Metric' },
   { value: 'imperial', label: 'Imperial' },
+  { value: 'metric', label: 'Metric' },
 ];
 
 /** 2×2 tile-grid logo mark. */
