@@ -8,6 +8,8 @@ A real-time tile layout optimizer that helps users plan tile installations by de
 ![Prisma](https://img.shields.io/badge/Prisma-5.14-2D3748?logo=prisma&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4?logo=tailwindcss&logoColor=white)
 
+**🔗 Live demo: [tile-flow-client.vercel.app](https://tile-flow-client.vercel.app/)**
+
 ---
 
 ## Features
@@ -175,7 +177,7 @@ npm run build
 
 ## Deployment
 
-The client is deployed on **Vercel** as a Vite single-page app.
+The client is deployed on **Vercel** as a Vite single-page app: **https://tile-flow-client.vercel.app/**
 
 - **Build command:** `npm run build:client`
 - **Output directory:** `client/dist`
