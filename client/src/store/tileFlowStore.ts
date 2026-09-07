@@ -30,6 +30,22 @@ export interface ShapeDraft {
   points: Vec2[];
 }
 
+/**
+ * An outline read from an image and offered for review (002-photo-to-room).
+ *
+ * It is deliberately NOT the room: it lives beside `room` until the user
+ * accepts it, so a bad reading changes nothing and needs no undo.
+ */
+export interface ShapeProposal {
+  shape: RoomShape;
+  /** 0..1, as the model reported it. Below 0.4 the panel warns about scale. */
+  confidence: number;
+  /** The model's account of what it read and how it scaled it. */
+  notes: string;
+  /** True when this is canned demo content rather than a reading. */
+  demoMode?: boolean;
+}
+
 /** Ring 0 is the room outline; 1.. are the cut-outs, in order. */
 export type RingIndex = number;
 
@@ -63,6 +79,11 @@ export interface TileFlowState {
   /** Close the outline and adopt it; returns false when it is not usable */
   commitDraft: () => boolean;
   setRoomShape: (shape: RoomShape | undefined) => void;
+  /** An outline proposed from an image, pending the user's decision */
+  shapeProposal: ShapeProposal | null;
+  setShapeProposal: (proposal: ShapeProposal | null) => void;
+  /** Adopt the proposal through the normal outline path, then clear it */
+  applyShapeProposal: () => void;
   moveShapeVertex: (ring: RingIndex, index: number, to: Vec2) => void;
   setShapeWallLength: (wallIndex: number, lengthMM: number) => void;
   deleteShapeVertex: (ring: RingIndex, index: number) => void;
@@ -247,6 +268,29 @@ export const useTileFlowStore = create<TileFlowState>()(
       set({
         room: shape ? roomFromShape(shape) : { width: room.width, height: room.height },
       });
+    },
+
+    shapeProposal: null,
+
+    // Normalised on the way in, so the ghost is drawn in the same coordinate
+    // space as the committed room rather than wherever the model's numbers
+    // happened to start. Area and perimeter are unaffected by the shift, so the
+    // summary the user reads before accepting is the one they get after.
+    setShapeProposal: (proposal) =>
+      set({
+        shapeProposal: proposal
+          ? { ...proposal, shape: normalizeShape(proposal.shape).shape }
+          : null,
+      }),
+
+    // Goes through setRoomShape rather than assigning `room`: that is what
+    // buys normalization, one undo entry and a worker recompute, and it is why
+    // an applied proposal behaves exactly like a hand-drawn outline (AC-3.4).
+    applyShapeProposal: () => {
+      const { shapeProposal, setRoomShape } = get();
+      if (!shapeProposal) return;
+      setRoomShape(shapeProposal.shape);
+      set({ shapeProposal: null, selectedWall: null });
     },
 
     moveShapeVertex: (ring, index, to) => {

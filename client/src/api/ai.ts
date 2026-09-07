@@ -17,7 +17,13 @@
  *    what the layout is.
  */
 
-import type { AiHealthDTO, LayoutStatsDTO, MeasurementSystem } from '@api/_lib/types';
+import type {
+  AiHealthDTO,
+  LayoutStatsDTO,
+  MeasurementSystem,
+  RoomFromImageDTO,
+  RoomFromImageRequestDTO,
+} from '@api/_lib/types';
 import { rectShape, summarizeShape } from '@tileflow/geometry';
 import { useTileFlowStore } from '../store/tileFlowStore';
 
@@ -143,6 +149,23 @@ export async function* streamText(
 
 export const ai = {
   health: (signal?: AbortSignal) => request<AiHealthDTO>('/health', { method: 'GET', signal }),
+
+  /**
+   * 002 — read a floor plan or sketch into a proposed outline.
+   *
+   * Returns geometry and nothing else: the caller stores it as a *proposal*,
+   * and every figure shown about it comes from the engine (Constitution I).
+   *
+   * Pass a signal — the panel aborts on unmount, and an aborted request
+   * rethrows `AbortError` rather than an `AiError`, so the caller can tell
+   * "we stopped this" from "this failed" (AC-5.2).
+   */
+  roomFromImage: (body: RoomFromImageRequestDTO, signal?: AbortSignal) =>
+    request<RoomFromImageDTO>('/room-from-image', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      signal,
+    }),
 };
 
 // ─── Store → DTO ──────────────────────────────────────────────────────────────
