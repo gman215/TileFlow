@@ -179,6 +179,11 @@ npm run build
 
 The client is deployed on **Vercel** as a Vite single-page app: **https://tile-flow-client.vercel.app/**
 
+Build settings live in `vercel.json` at the repo root, so the deployment is reproducible from the
+repository rather than from dashboard state:
+
+- **Root directory:** the repo root (must be blank in project settings — functions are discovered
+  at `<root>/api`, and `vercel.json` is only read from the root directory)
 - **Build command:** `npm run build:client`
 - **Output directory:** `client/dist`
 - **Install command:** `npm install` (npm workspaces installs the `@tileflow/geometry` package the client depends on)

@@ -14,7 +14,8 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "paths": {
-      "@tileflow/geometry": ["../packages/geometry/src/index.ts"]
+      "@tileflow/geometry": ["../packages/geometry/src/index.ts"],
+      "@api/*": ["../api/*"]
     }
   },
   "include": ["src"],

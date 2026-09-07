@@ -1,0 +1,21 @@
+{
+  // Standalone, non-composite. The root tsconfig is solution-style ("files": [])
+  // with project references, and references require composite projects that emit.
+  // These handlers never emit — Vercel bundles them — so api/ stays out of the
+  // reference graph and is checked on its own via `npm run typecheck:api`.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // DOM supplies Request, Response, ReadableStream and AbortSignal — the
+    // Web-standard handler signature Vercel invokes.
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true
+  },
+  "include": ["**/*.ts"]
+}

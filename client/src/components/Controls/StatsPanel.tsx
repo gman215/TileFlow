@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTileFlowStore } from '../../store/tileFlowStore';
+import { ORDER_BUFFER } from '../../api/ai';
 
 const MM2_PER_M2 = 1_000_000;
 const MM2_PER_FT2 = 92_903.04;
@@ -30,7 +31,9 @@ export default function StatsPanel() {
   }
 
   const totalTiles = layout.fullTileCount + layout.cutTileCount;
-  const buyCount = Math.ceil(totalTiles * 1.1);
+  // Shared with statsDto() so the figure shown here and the figure a model is
+  // told are the same number.
+  const buyCount = Math.ceil(totalTiles * ORDER_BUFFER);
   const imperial = system === 'imperial';
   const roomAreaDisplay = imperial
     ? `${(layout.roomArea / MM2_PER_FT2).toFixed(1)} ft²`
