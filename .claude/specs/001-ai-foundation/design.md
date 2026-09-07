@@ -105,10 +105,10 @@ defences, because one of them rests on a convention this project has not verifie
 
 1. The `functions` glob in `vercel.json` is `api/ai/*.ts`, not `api/**/*.ts`. The broad glob also
    matched every helper in `_lib`, which is not what the config is for.
-2. Vercel is widely understood to skip `_`-prefixed files and directories when detecting routes —
-   which is why the directory is named `_lib` — but the docs consulted here do not state it, so it
-   is **checked empirically at the first preview deploy**: `curl <preview>/api/_lib/http` must
-   return 404. If it does not, the helpers move behind a single non-route entry point.
+2. Vercel skips `_`-prefixed files and directories when detecting routes — which is why the
+   directory is named `_lib`. The docs consulted here never stated it, so it was **verified against
+   a real preview deployment** (2026-09-07): `/api/_lib/http` returns `404: NOT_FOUND`. Re-check
+   this if the directory is ever renamed without the underscore.
 
 Publishing `_lib` would expose the shape of the prompts and the guard logic. It would not expose
 the key — that is only ever read inside a handler and never returned (Constitution III) — but it is
