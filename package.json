@@ -1,6 +1,7 @@
 {
   "name": "tileflow",
   "private": true,
+  "type": "module",
   "workspaces": [
     "packages/geometry",
     "client",
@@ -14,11 +15,17 @@
     "build:geometry": "cd packages/geometry && npm run build",
     "build:client": "cd client && npm run build",
     "build:server": "cd server && npm run build",
+    "typecheck:api": "tsc -p api --noEmit",
     "db:push": "cd server && npm run db:push",
     "db:generate": "cd server && npm run db:generate",
     "install:all": "npm install"
   },
+  "dependencies": {
+    "@google/genai": "^2.21.0",
+    "zod": "^3.23.0"
+  },
   "devDependencies": {
+    "@types/node": "^20.14.0",
     "concurrently": "^8.2.0",
     "typescript": "^5.4.0"
   }
