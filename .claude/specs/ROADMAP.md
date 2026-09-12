@@ -39,7 +39,7 @@ other and can be built in any order; the order below is by demo impact.
 | 004 | [installation-brief](004-installation-brief/) | `feat/004-installation-brief` | Not started | `POST /api/ai/brief` | streaming text |
 | 005 | [cost-estimator](005-cost-estimator/) | `feat/005-cost-estimator` | Not started | `POST /api/ai/estimate` | structured output |
 | 006 | Demo narrative | `feat/006-demo-narrative` | Not started | — | — |
-| 007 | [upstream-resilience](007-upstream-resilience/) | `feat/007-upstream-resilience` | In progress | — | — |
+| 007 | [upstream-resilience](007-upstream-resilience/) | `feat/007-upstream-resilience` | **Complete (8/8)** — provider refusals degrade to demo content | — | — |
 
 Update the Status column as specs complete. `/spec-status` reports unchecked tasks across all of
 them.

@@ -14,8 +14,13 @@
  */
 
 import { ApiError, json, methodGuard, readJson, toResponse } from '../_lib/http.js';
-import { getClient, modelFor, timeoutSignal, TIMEOUT_MS } from '../_lib/genai.js';
-import { budgetExhausted, checkRateLimit, noteModelCall } from '../_lib/guard.js';
+import { getClient, isProviderExhausted, modelFor, timeoutSignal, TIMEOUT_MS } from '../_lib/genai.js';
+import {
+  budgetExhausted,
+  checkRateLimit,
+  noteModelCall,
+  noteProviderExhausted,
+} from '../_lib/guard.js';
 import { systemInstruction } from '../_lib/prompts.js';
 import {
   ROOM_FROM_IMAGE,
@@ -36,10 +41,14 @@ const ROUTE = 'room-from-image';
 const MAX_BODY_BYTES = 4_000_000;
 
 /**
- * Served instead of a model call once the daily budget is spent
- * (Constitution VII). A visitor sees the feature work, labelled, rather than a
- * 429 — so this has to be a real outline the rest of the pipeline accepts, not
- * a placeholder: a 4.2 × 3.6 m L-shaped kitchen with an island.
+ * Served instead of a model call whenever a real one cannot be made — the daily
+ * budget is spent, or the provider itself has refused (Constitution VII). A
+ * visitor sees the feature work, labelled, rather than a 429 or a 502 — so this
+ * has to be a real outline the rest of the pipeline accepts, not a placeholder:
+ * a 4.2 × 3.6 m L-shaped kitchen with an island.
+ *
+ * The note is deliberately cause-neutral: one constant now serves both paths,
+ * and "your budget is spent" would be false for a restricted key.
  *
  * Exported so its conformance to the response contract can be tested rather
  * than assumed.
@@ -63,7 +72,7 @@ export const DEMO_ROOM_OUTLINE: RoomFromImageDTO = {
   ],
   confidence: 0.85,
   notes:
-    "Example outline — today's AI budget is spent, so your image was not read. " +
+    'Example outline — live AI is unavailable right now, so your image was not read. ' +
     'This is a 4.2 × 3.6 m L-shaped kitchen with a 1.4 × 0.9 m island.',
   detectedSystem: 'metric',
   demoMode: true,
@@ -127,9 +136,22 @@ export async function POST(request: Request): Promise<Response> {
       );
       outputText = interaction.output_text;
     } catch (err) {
-      // A provider failure, a timeout or a transport error are all "the AI
-      // service is unavailable" to the caller. The real cause is logged by
-      // `toResponse` and never crosses the wire (Constitution III).
+      // A refusal that means "this deployment cannot call the model right now"
+      // degrades to the canned outline rather than erroring: our own counter and
+      // the provider's limits are independent, and on a personal key the
+      // provider's trip first. Constitution VII is about what the visitor sees,
+      // not about which counter noticed (007 AC-1.1).
+      if (isProviderExhausted(err)) {
+        console.error(`[api/ai] ${ROUTE}: provider refused, serving demo content:`, err);
+        noteProviderExhausted();
+        return json(DEMO_ROOM_OUTLINE);
+      }
+
+      // Everything else — a malformed request, a provider fault, a timeout, a
+      // transport error — stays an upstream failure. A billing lapse must not
+      // become a licence to hide real bugs behind canned content (007 AC-1.2).
+      // The real cause is logged by `toResponse` and never crosses the wire
+      // (Constitution III).
       throw new ApiError('upstream', `Gemini call failed for ${ROUTE}`, err);
     }
 

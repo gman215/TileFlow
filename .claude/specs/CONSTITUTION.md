@@ -137,8 +137,12 @@ A feature spec is complete when **all** of the following hold:
 3. It passes with `GEMINI_API_KEY` unset — the app works, the feature explains itself.
 4. It passes with the network throttled to slow 3G — no wedged spinners, no unhandled rejection.
 5. `npm run typecheck:api` and `npm test` are clean.
-6. `git grep --untracked -i "AIza" -- . ':!*.lock' ':!.claude/'` returns nothing.
+6. `git grep --untracked -iE "AIza|AQ\.Ab" -- . ':!*.lock' ':!.claude/'` returns nothing.
 7. The work is on the spec's own branch (`feat/<spec-directory-name>`), not on `main`.
+
+**On that pattern:** it matches both key formats Google issues — the legacy `AIza…` and the current
+`AQ.Ab…`. A key minted today is the latter, so an `AIza`-only check passes happily on a tree holding
+a live credential. Whenever the provider changes its format again, this line changes with it.
 
 **On that grep:** `--untracked` is not optional. Plain `git grep` searches only tracked files, and
 new work under `api/`, `client/src/ai/` and `client/src/components/AI/` is untracked until it is
