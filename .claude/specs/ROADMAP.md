@@ -38,7 +38,7 @@ other and can be built in any order; the order below is by demo impact.
 | 003 | [layout-assistant](003-layout-assistant/) | `feat/003-layout-assistant` | Not started | `POST /api/ai/assistant` | tool calling, multi-turn |
 | 004 | [installation-brief](004-installation-brief/) | `feat/004-installation-brief` | Not started | `POST /api/ai/brief` | streaming text |
 | 005 | [cost-estimator](005-cost-estimator/) | `feat/005-cost-estimator` | Not started | `POST /api/ai/estimate` | structured output |
-| 006 | Demo narrative | `feat/006-demo-narrative` | Not started | — | — |
+| 006 | Demo narrative | `feat/006-demo-narrative` | In progress (3/8) — README done; GIF and `docs/DEMO.md` outstanding | — | — |
 | 007 | [upstream-resilience](007-upstream-resilience/) | `feat/007-upstream-resilience` | **Complete (8/8)** — provider refusals degrade to demo content | — | — |
 
 Update the Status column as specs complete. `/spec-status` reports unchecked tasks across all of
@@ -73,14 +73,16 @@ rates and waste factors and assembles line items; the client does all the arithm
 The engineering is only half of the point. These tasks make the work legible to someone scanning
 for 90 seconds.
 
-- [ ] Create the branch first: `git switch -c feat/006-demo-narrative` from an up-to-date `main`.
+- [x] Create the branch first: `git switch -c feat/006-demo-narrative` from an up-to-date `main`.
       (Constitution VIII)
-- [ ] Add an **AI** section to `README.md`: the architecture diagram from
+- [x] Add an **AI** section to `README.md`: the architecture diagram from
       `001-ai-foundation/design.md`, the engine-computes/model-narrates rule, and one line per
       feature with the Gemini capability it uses (vision, tool calling, structured output,
       streaming).
-- [ ] Add the four AI routes to the API endpoint table in `README.md`.
-- [ ] Update the Tech Stack table with `@google/genai` and Vercel Functions.
+- [ ] Add the four AI routes to the API endpoint table in `README.md`. *(The two that exist —
+      `/api/ai/health` and `/api/ai/room-from-image` — are documented. Unticked until 003–005 ship
+      the other two.)*
+- [x] Update the Tech Stack table with `@google/genai` and Vercel Functions.
 - [ ] Record a short screen capture of photo → outline → optimized layout → brief; embed as a GIF
       near the top of `README.md`.
 - [ ] Write `docs/DEMO.md`: a 3-minute walkthrough script — what to click, what to say about the
