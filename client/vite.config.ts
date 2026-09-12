@@ -20,6 +20,7 @@ const AI_ENV_KEYS = [
   'GEMINI_MODEL_CHEAP',
   'AI_DAILY_CALL_BUDGET',
   'AI_RATE_LIMIT_PER_MIN',
+  'AI_UPSTREAM_COOLDOWN_MIN',
 ] as const;
 
 /** Route names are file names — keep anything path-like out of the lookup. */

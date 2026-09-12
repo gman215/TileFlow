@@ -18,10 +18,17 @@ export type ModelRole = 'fast' | 'vision' | 'cheap';
 /**
  * Defaults confirmed at ai.google.dev. Each is overridable by environment so a
  * model change never requires a deploy of new code.
+ *
+ * The vision default is the cheapest model measured *bit-exact* on 002's
+ * ground-truth plan (5/5 runs) while also rejecting the not-a-plan image and
+ * ignoring the injection probe — about a tenth the cost of `gemini-3.8-flash`.
+ * Note that newer is not better here: `gemini-3.5-flash-lite` failed the same
+ * plan by returning raw pixel coordinates instead of applying the printed scale.
+ * See 007-upstream-resilience/design.md for the measurements.
  */
 const MODEL_ENV: Record<ModelRole, { env: string; fallback: string }> = {
   fast: { env: 'GEMINI_MODEL_FAST', fallback: 'gemini-3.8-flash' },
-  vision: { env: 'GEMINI_MODEL_VISION', fallback: 'gemini-3.8-flash' },
+  vision: { env: 'GEMINI_MODEL_VISION', fallback: 'gemini-3.1-flash-lite' },
   cheap: { env: 'GEMINI_MODEL_CHEAP', fallback: 'gemini-3.5-flash-lite' },
 };
 
@@ -81,4 +88,42 @@ export function getClient(): GoogleGenAI {
 /** Test seam only — drops the memoised client. */
 export function resetClientForTest(): void {
   cached = null;
+}
+
+// ─── Provider failures ────────────────────────────────────────────────────────
+
+/**
+ * True when the provider refused because this deployment cannot use it right
+ * now — a spent balance, a quota cap, a restricted or revoked key — rather than
+ * because our request was wrong or the service itself faulted.
+ *
+ * Routes turn this into canned demo content instead of a 502. That is what
+ * Constitution VII promises and what our own daily counter alone cannot deliver:
+ * the provider's limits trip independently of ours and, on a personal key,
+ * usually trip first.
+ *
+ * Structural on purpose. `@google/genai` throws `RateLimitError` and
+ * `PermissionDeniedError` from an internal `APIError` base it does not export,
+ * and the `ApiError` it *does* export is a different class — `instanceof` is
+ * `false` for a real thrown error. Reading the numeric status survives a
+ * refactor of that hierarchy; matching a constructor name would not.
+ *
+ * `401` is excluded deliberately: an outright invalid key means this deployment
+ * is broken, and that should stay loud rather than be papered over with a
+ * plausible-looking room.
+ */
+export function isProviderExhausted(err: unknown): boolean {
+  const status = providerStatus(err);
+  return status === 429 || status === 403;
+}
+
+/** The HTTP status an SDK error carries, or null when it is not one. */
+function providerStatus(err: unknown): number | null {
+  if (typeof err !== 'object' || err === null) return null;
+
+  const { status, statusCode } = err as { status?: unknown; statusCode?: unknown };
+  for (const value of [status, statusCode]) {
+    if (typeof value === 'number' && Number.isInteger(value)) return value;
+  }
+  return null;
 }
