@@ -22,6 +22,8 @@ into a brief an installer could work from. The engine keeps owning every number.
                      └──▶ 005-cost-estimator      (structured output)
                                   │
                                   └──▶ Milestone 6 — demo narrative
+
+002 ──▶ 007-upstream-resilience   (hardens the shared failure path; see its requirements.md)
 ```
 
 001 must be complete and verified before any feature spec starts. 002–005 are independent of each
@@ -32,11 +34,12 @@ other and can be built in any order; the order below is by demo impact.
 | # | Spec | Branch | Status | Route | Model call |
 |---|---|---|---|---|---|
 | 001 | [ai-foundation](001-ai-foundation/) | `feat/001-ai-foundation` | **Complete (17/17)** | `GET /api/ai/health` | — |
-| 002 | [photo-to-room](002-photo-to-room/) | `feat/002-photo-to-room` | **In progress (10/12)** — live model calls blocked on API quota | `POST /api/ai/room-from-image` | vision + structured output |
+| 002 | [photo-to-room](002-photo-to-room/) | `feat/002-photo-to-room` | **Complete (12/12)** — verified against live model calls 2026-09-12 | `POST /api/ai/room-from-image` | vision + structured output |
 | 003 | [layout-assistant](003-layout-assistant/) | `feat/003-layout-assistant` | Not started | `POST /api/ai/assistant` | tool calling, multi-turn |
 | 004 | [installation-brief](004-installation-brief/) | `feat/004-installation-brief` | Not started | `POST /api/ai/brief` | streaming text |
 | 005 | [cost-estimator](005-cost-estimator/) | `feat/005-cost-estimator` | Not started | `POST /api/ai/estimate` | structured output |
 | 006 | Demo narrative | `feat/006-demo-narrative` | Not started | — | — |
+| 007 | [upstream-resilience](007-upstream-resilience/) | `feat/007-upstream-resilience` | In progress | — | — |
 
 Update the Status column as specs complete. `/spec-status` reports unchecked tasks across all of
 them.
