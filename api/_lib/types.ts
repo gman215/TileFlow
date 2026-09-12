@@ -72,6 +72,54 @@ export interface LayoutStatsDTO {
   };
 }
 
+// ─── 002 · room-from-image ────────────────────────────────────────────────────
+
+/** Image formats the route accepts. The client re-encodes to JPEG before sending. */
+export type RoomImageMimeType =
+  | 'image/jpeg'
+  | 'image/png'
+  | 'image/webp'
+  | 'image/heic'
+  | 'image/heif';
+
+/** Request body for `POST /api/ai/room-from-image`. */
+export interface RoomFromImageRequestDTO {
+  /** Bare base64 — no `data:` URI prefix. */
+  imageBase64: string;
+  mimeType: RoomImageMimeType;
+  /** Only affects how `notes` is phrased; coordinates are always millimetres. */
+  system: MeasurementSystem;
+  /** Optional user hint, ≤300 characters ("the long wall is 14 ft"). */
+  note?: string;
+}
+
+/** A point in room space. Millimetres, origin top-left, x right, y down. */
+export interface PointDTO {
+  x: number;
+  y: number;
+}
+
+/**
+ * `POST /api/ai/room-from-image`. Geometry only — the model proposes an
+ * outline, and every figure derived from it (area, perimeter, tile count) comes
+ * from the engine once the user applies it (Constitution I).
+ *
+ * `api/_lib/schemas.ts` holds the Zod mirror that produces this shape, and
+ * proves at compile time that the two agree.
+ */
+export interface RoomFromImageDTO extends DemoFlagged {
+  /** Outline, clockwise, ≥3 and ≤60 points. */
+  boundary: PointDTO[];
+  /** Untiled cut-outs — islands, columns, stair openings. */
+  holes: PointDTO[][];
+  /** 0..1. Exactly 0 means "this is not a floor plan"; no proposal is offered. */
+  confidence: number;
+  /** What the model read, and which labels or assumptions produced the scale. */
+  notes: string;
+  /** The units printed on the drawing, not the units of this response. */
+  detectedSystem: 'metric' | 'imperial' | 'unknown';
+}
+
 // ─── Health ───────────────────────────────────────────────────────────────────
 
 /**

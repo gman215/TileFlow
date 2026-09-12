@@ -15,6 +15,8 @@ const HANDLE_STROKE = '#1B1A18';
 const LABEL_COLOR = 'rgba(255,255,255,0.62)';
 const HOLE_FILL = '#1B1A18';
 const HOLE_STROKE = 'rgba(255,255,255,0.35)';
+/** Same amber the app already uses for "being edited" (EDIT_COLOR in TileCanvas). */
+const PROPOSAL_COLOR = '#F59E0B';
 
 function flatPoints(poly: Polygon): number[] {
   const pts: number[] = [];
@@ -79,6 +81,54 @@ function WallLabel({
       listening={false}
       perfectDrawEnabled={false}
     />
+  );
+}
+
+/**
+ * An outline read from an image, drawn over the room as a reviewable proposal
+ * (002-photo-to-room, AC-3.1).
+ *
+ * Rendered separately from `RoomShapeLayer` rather than inside it, because a
+ * proposal is most often made against a room that has no outline yet — the
+ * default rectangle — and `RoomShapeLayer` is only mounted once one exists.
+ *
+ * Fill and stroke are separate nodes so the dashes stay crisp while the area
+ * behind them stays translucent; `opacity` on a single node would fade both.
+ * Cut-outs are outlined rather than punched out: this is a preview, and a
+ * dashed island reads correctly without a compositing pass.
+ */
+export function ProposalGhost({ shape, scale }: { shape: RoomShape; scale: number }) {
+  const dash = [10 / scale, 6 / scale];
+
+  return (
+    <Group listening={false}>
+      <Line
+        points={flatPoints(shape.boundary)}
+        closed
+        fill={PROPOSAL_COLOR}
+        opacity={0.35}
+        perfectDrawEnabled={false}
+      />
+      <Line
+        points={flatPoints(shape.boundary)}
+        closed
+        stroke={PROPOSAL_COLOR}
+        strokeWidth={2.5 / scale}
+        dash={dash}
+        perfectDrawEnabled={false}
+      />
+      {shape.holes.map((hole, i) => (
+        <Line
+          key={`proposal-hole-${i}`}
+          points={flatPoints(hole)}
+          closed
+          stroke={PROPOSAL_COLOR}
+          strokeWidth={2 / scale}
+          dash={dash}
+          perfectDrawEnabled={false}
+        />
+      ))}
+    </Group>
   );
 }
 

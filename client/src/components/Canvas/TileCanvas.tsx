@@ -21,7 +21,7 @@ import {
   roomDisplay,
 } from '../../utils/measurements';
 import { snapPoint, snapGridMM } from '../../utils/snapping';
-import RoomShapeLayer from './RoomShapeLayer';
+import RoomShapeLayer, { ProposalGhost } from './RoomShapeLayer';
 import DrawLayer from './DrawLayer';
 
 const FULL_TILE_COLOR = '#8FB3D9';
@@ -150,6 +150,7 @@ TileShape.displayName = 'TileShape';
  */
 export default function TileCanvas() {
   const room = useTileFlowStore((s) => s.room);
+  const shapeProposal = useTileFlowStore((s) => s.shapeProposal);
   const layout = useTileFlowStore((s) => s.layout);
   const isComputing = useTileFlowStore((s) => s.isComputing);
   const setRoomWidthMM = useTileFlowStore((s) => s.setRoomWidthMM);
@@ -646,6 +647,9 @@ export default function TileCanvas() {
 
           {/* Tiles */}
           {tileElements}
+
+          {/* An outline proposed from an image — above everything, never hittable */}
+          {shapeProposal && <ProposalGhost shape={shapeProposal.shape} scale={scale} />}
 
           {/* Outline, wall dimensions, cut-outs and corner handles */}
           {room.shape ? (

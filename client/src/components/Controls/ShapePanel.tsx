@@ -4,6 +4,7 @@ import { wallsOf, validateShape, summarizeShape, rectShape } from '@tileflow/geo
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import { formatDisplayFromMM, roomDisplay } from '../../utils/measurements';
 import DimensionField from './DimensionField';
+import PlanUpload from '../AI/PlanUpload';
 
 const MM2_PER_M2 = 1_000_000;
 const MM2_PER_FT2 = 92_903.04;
@@ -87,6 +88,9 @@ export default function ShapePanel() {
           </button>
         </div>
       </div>
+
+      {/* Read an outline off a photo — the alternative to drawing one */}
+      <PlanUpload />
 
       {/* Mode buttons */}
       <div className="flex flex-wrap gap-1.5">

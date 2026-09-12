@@ -32,8 +32,9 @@
  *   const result = parseModelJson(EXAMPLE, interaction.output_text);
  */
 
-import { ZodError, type ZodType } from 'zod';
+import { z, ZodError, type ZodType } from 'zod';
 import { ApiError } from './http.js';
+import type { RoomFromImageDTO, RoomFromImageRequestDTO } from './types.js';
 
 // ─── Pairing ──────────────────────────────────────────────────────────────────
 
@@ -114,3 +115,164 @@ export function parseModelJson<T>(pair: SchemaPair<T>, text: string | undefined 
 //   003-layout-assistant     (tool calling — no response_format)
 //   004-installation-brief   (streamed prose — no response_format)
 //   005-cost-estimator / T1  ESTIMATE
+
+// ─── 002 · room-from-image ────────────────────────────────────────────────────
+
+/**
+ * The formats Gemini accepts as image input. HEIC/HEIF are listed because a
+ * phone photo arrives as one, but the client re-encodes to JPEG before sending
+ * (AC-1.2) — so in practice only `image/jpeg` reaches this route.
+ */
+export const ROOM_IMAGE_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+] as const;
+
+/**
+ * Standard base64, no `data:` URI prefix and no whitespace. Anchored and built
+ * from a single character class, so it cannot backtrack on a multi-megabyte
+ * string.
+ */
+const BASE64_ONLY = /^[A-Za-z0-9+/]+={0,2}$/;
+
+/**
+ * Matches the route's `readJson` cap. `readJson` rejects an oversized body
+ * before Zod ever runs; this bound is the second line, for a body that is
+ * within the cap but spends all of it on one field.
+ */
+const MAX_IMAGE_BASE64 = 4_000_000;
+
+/** Request body for `POST /api/ai/room-from-image`. */
+export const RoomFromImageIn = z.object({
+  imageBase64: z
+    .string()
+    .min(1)
+    .max(MAX_IMAGE_BASE64)
+    .regex(BASE64_ONLY, 'imageBase64 must be bare base64 with no data: URI prefix'),
+  mimeType: z.enum(ROOM_IMAGE_MIME_TYPES),
+  /** Only affects how `notes` is phrased — never the units, which are always mm. */
+  system: z.enum(['metric', 'imperial']),
+  note: z.string().max(300).optional(),
+});
+
+export type RoomFromImageInput = z.infer<typeof RoomFromImageIn>;
+
+/**
+ * What we ask Gemini for. Kept deliberately loose: `response_format` constrains
+ * generation, and over-specifying it buys nothing the mirror below does not
+ * enforce properly.
+ */
+export const ROOM_FROM_IMAGE_JSON_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    boundary: {
+      type: 'array',
+      description: 'Room outline, clockwise, in millimetres. 3 to 60 points.',
+      items: {
+        type: 'object',
+        properties: { x: { type: 'number' }, y: { type: 'number' } },
+        required: ['x', 'y'],
+      },
+    },
+    holes: {
+      type: 'array',
+      description: 'Untiled cut-outs (islands, columns, stair openings). Empty when there are none.',
+      items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: { x: { type: 'number' }, y: { type: 'number' } },
+          required: ['x', 'y'],
+        },
+      },
+    },
+    confidence: { type: 'number', description: '0 to 1. 0 means this is not a floor plan.' },
+    notes: { type: 'string', description: 'Which labels or assumptions produced the scale.' },
+    detectedSystem: { type: 'string', enum: ['metric', 'imperial', 'unknown'] },
+  },
+  required: ['boundary', 'holes', 'confidence', 'notes', 'detectedSystem'],
+};
+
+/**
+ * Coordinate bound, mirroring `PointSchema` in `server/src/validation.ts`. A
+ * plan is a room, not a county: anything outside this is a scale blunder by
+ * three orders of magnitude, not a big house.
+ */
+const MAX_COORD_MM = 1_000_000;
+
+/**
+ * Largest room the save endpoint will accept (`RoomSchema.width/height` max in
+ * `server/src/validation.ts`). Checked against the outline's bounding box below.
+ */
+const MAX_ROOM_EXTENT_MM = 100_000;
+
+const Pt = z.object({
+  x: z.number().finite().min(-MAX_COORD_MM).max(MAX_COORD_MM),
+  y: z.number().finite().min(-MAX_COORD_MM).max(MAX_COORD_MM),
+});
+
+/**
+ * What we trust. Stricter than the JSON Schema in every dimension that matters,
+ * and stricter again than `server/src/validation.ts` (≤500 boundary vertices,
+ * ≤50 holes) so an accepted proposal can never become a room the save endpoint
+ * would later reject.
+ */
+export const RoomFromImageOut = z
+  .object({
+    boundary: z.array(Pt).min(3).max(60),
+    holes: z.array(z.array(Pt).min(3).max(40)).max(10),
+    confidence: z.number().min(0).max(1),
+    notes: z.string().max(400),
+    detectedSystem: z.enum(['metric', 'imperial', 'unknown']),
+  })
+  // Per-point bounds do not constrain the outline's *extent*: two in-range
+  // points 1.9 km apart would pass and then normalize into an unsaveable room.
+  // The bounding box is what `normalizeShape` turns into width/height, so it is
+  // the thing to bound (T1).
+  .superRefine((value, ctx) => {
+    const points = [...value.boundary, ...value.holes.flat()];
+    const xs = points.map((p) => p.x);
+    const ys = points.map((p) => p.y);
+    const width = Math.max(...xs) - Math.min(...xs);
+    const height = Math.max(...ys) - Math.min(...ys);
+
+    if (width > MAX_ROOM_EXTENT_MM || height > MAX_ROOM_EXTENT_MM) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Outline spans ${Math.round(width)}×${Math.round(height)} mm, over the ${MAX_ROOM_EXTENT_MM} mm limit`,
+      });
+    }
+  });
+
+export const ROOM_FROM_IMAGE = schemaPair(
+  'room-from-image',
+  ROOM_FROM_IMAGE_JSON_SCHEMA,
+  RoomFromImageOut
+);
+
+/**
+ * Compile-time proof that the mirror and the DTO the client reads cannot drift
+ * apart. `types.ts` owns the wire shape; this is the only place that shape and
+ * its validator meet, so a field added to one and not the other fails here
+ * rather than at runtime in a browser.
+ */
+type RequestMatchesDto =
+  z.infer<typeof RoomFromImageIn> extends RoomFromImageRequestDTO
+    ? RoomFromImageRequestDTO extends z.infer<typeof RoomFromImageIn>
+      ? true
+      : never
+    : never;
+const REQUEST_MATCHES_DTO: RequestMatchesDto = true;
+void REQUEST_MATCHES_DTO;
+
+type MirrorMatchesDto =
+  z.infer<typeof RoomFromImageOut> extends Omit<RoomFromImageDTO, 'demoMode'>
+    ? Omit<RoomFromImageDTO, 'demoMode'> extends z.infer<typeof RoomFromImageOut>
+      ? true
+      : never
+    : never;
+const MIRROR_MATCHES_DTO: MirrorMatchesDto = true;
+void MIRROR_MATCHES_DTO;
