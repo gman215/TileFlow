@@ -39,10 +39,6 @@ export default function ShapePanel() {
   const resetToRect = useTileFlowStore((s) => s.resetToRect);
   const deleteHole = useTileFlowStore((s) => s.deleteHole);
   const setReferenceWall = useTileFlowStore((s) => s.setReferenceWall);
-  const undoShape = useTileFlowStore((s) => s.undoShape);
-  const redoShape = useTileFlowStore((s) => s.redoShape);
-  const canUndo = useTileFlowStore((s) => s.shapePast.length > 0);
-  const canRedo = useTileFlowStore((s) => s.shapeFuture.length > 0);
   const convertToPlan = useTileFlowStore((s) => s.convertToPlan);
 
   const display = roomDisplay(system);
@@ -66,74 +62,53 @@ export default function ShapePanel() {
 
   return (
     <div className="px-4 py-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="section-header">Shape</h3>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={undoShape}
-            disabled={!canUndo}
-            title="Undo outline change"
-            className="px-1.5 py-0.5 text-[12px] text-ink-muted transition-colors
-                       hover:text-ink disabled:opacity-30 disabled:hover:text-ink-muted"
-          >
-            ↺
-          </button>
-          <button
-            onClick={redoShape}
-            disabled={!canRedo}
-            title="Redo outline change"
-            className="px-1.5 py-0.5 text-[12px] text-ink-muted transition-colors
-                       hover:text-ink disabled:opacity-30 disabled:hover:text-ink-muted"
-          >
-            ↻
-          </button>
-        </div>
-      </div>
+      <h3 className="section-header">Room shape</h3>
 
-      {/* Read an outline off a photo — the alternative to drawing one */}
-      <PlanUpload />
-
-      {/* Mode buttons */}
-      <div className="flex flex-wrap gap-1.5">
-        {drawing ? (
-          <button
-            onClick={cancelDraft}
-            className="flex-1 rounded-lg border border-hairline bg-amber-50 px-2 py-1.5
-                       text-[12px] font-medium text-amber-700 hover:bg-amber-100 transition-colors"
-          >
-            Cancel drawing (Esc)
-          </button>
-        ) : (
-          <>
-            <button
-              onClick={() => startDraw('boundary')}
-              className="flex-1 rounded-lg border border-hairline px-2 py-1.5 text-[12px]
-                         font-medium text-ink hover:bg-hairline transition-colors"
-              title="Click corners on the canvas to draw the floor"
-            >
-              {shape ? 'Redraw room' : 'Draw room'}
-            </button>
-            <button
-              onClick={() => startDraw('hole')}
-              className="flex-1 rounded-lg border border-hairline px-2 py-1.5 text-[12px]
-                         font-medium text-ink hover:bg-hairline transition-colors"
-              title="Draw an island, column or other area that is not tiled"
-            >
-              Add cut-out
-            </button>
-          </>
-        )}
-      </div>
-
-      {!drawing && (
+      {/* What you can do, each with one line on what it is for */}
+      {drawing ? (
         <button
-          onClick={convertToPlan}
-          className="w-full rounded-lg border border-hairline px-2 py-1.5 text-[12px] font-medium
-                     text-ink hover:bg-hairline transition-colors"
-          title="Wrap this room in real walls (studs, drywall) and add more rooms. The floor and tile count stay the same."
+          onClick={cancelDraft}
+          className="w-full rounded-lg border border-hairline bg-amber-50 px-2 py-1.5
+                     text-[12px] font-medium text-amber-700 hover:bg-amber-100 transition-colors"
         >
-          Convert to floor plan
+          Cancel drawing (Esc)
         </button>
+      ) : (
+        <div className="space-y-1">
+          {[
+            {
+              label: shape ? 'Redraw shape' : 'Draw shape',
+              key: 'D',
+              blurb: 'Click corners on the canvas for an L-shape, bay or angled wall.',
+              onClick: () => startDraw('boundary'),
+            },
+            {
+              label: 'Add cut-out',
+              key: 'C',
+              blurb: "Mark an island, tub or column that isn't tiled.",
+              onClick: () => startDraw('hole'),
+            },
+            {
+              label: 'Make floor plan',
+              key: '',
+              blurb: 'Several rooms with real walls (studs, drywall), doors and a materials list.',
+              onClick: convertToPlan,
+            },
+          ].map((a) => (
+            <button
+              key={a.label}
+              onClick={a.onClick}
+              title={a.key ? `${a.label} (${a.key})` : a.label}
+              className="w-full rounded-lg border border-hairline px-2.5 py-1.5 text-left hover:bg-[#F7F6F3] transition-colors"
+            >
+              <div className="text-[12px] font-medium text-ink">
+                {a.label}
+                {a.key && <span className="ml-1.5 font-mono text-[10px] text-ink-muted">{a.key}</span>}
+              </div>
+              <div className="text-[11px] text-ink-muted">{a.blurb}</div>
+            </button>
+          ))}
+        </div>
       )}
 
       {shape && !drawing && (
@@ -282,6 +257,16 @@ export default function ShapePanel() {
           </div>
         </div>
       )}
+
+      {/* Read an outline off a photo — the alternative to drawing one */}
+      <details>
+        <summary className="cursor-pointer text-[11px] font-medium text-ink-secondary hover:text-ink">
+          Have a floor-plan photo? Let AI read it
+        </summary>
+        <div className="mt-2">
+          <PlanUpload />
+        </div>
+      </details>
 
       <p className="text-[10px] text-ink-muted">
         {drawing

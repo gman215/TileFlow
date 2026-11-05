@@ -3,7 +3,6 @@ import { useTileFlowStore } from '../../store/tileFlowStore';
 import {
   generateTiles,
   toMM,
-  type AlignmentMode,
   type PatternType,
   type Polygon,
 } from '@tileflow/geometry';
@@ -18,11 +17,6 @@ const PATTERNS: { value: PatternType; label: string }[] = [
   { value: 'diagonal-45', label: '45° Diagonal' },
 ];
 
-const ALIGNMENTS: { value: AlignmentMode; label: string; title: string }[] = [
-  { value: 'optimize', label: 'Auto', title: 'Optimize offset to minimize waste' },
-  { value: 'center-tile', label: 'Center tile', title: 'Center a full tile on the room' },
-  { value: 'center-grout', label: 'Center joint', title: 'Run a grout joint through the room center' },
-];
 
 interface SizePreset {
   label: string;
@@ -114,8 +108,6 @@ export default function TilePanel() {
   const setGroutMM = useTileFlowStore((s) => s.setGroutMM);
   const setPattern = useTileFlowStore((s) => s.setPattern);
   const setTileOrientation = useTileFlowStore((s) => s.setTileOrientation);
-  const alignment = useTileFlowStore((s) => s.alignment);
-  const setAlignment = useTileFlowStore((s) => s.setAlignment);
 
   const imperial = system === 'imperial';
   const tileFmt = tileDisplay(system);
@@ -145,7 +137,9 @@ export default function TilePanel() {
   return (
     <div className="px-4 py-4 space-y-2.5">
       <div className="flex items-center justify-between">
-        <h3 className="section-header">Tile</h3>
+        <h3 className="section-header">
+          <span className="step">2</span>Tile
+        </h3>
         <span className="text-[10px] text-ink-muted">sizes in {presetUnitLabel}</span>
       </div>
 
@@ -264,30 +258,6 @@ export default function TilePanel() {
             </button>
           );
         })}
-      </div>
-
-      {/* Alignment within the room */}
-      <div className="space-y-1">
-        <label className="input-label">Alignment</label>
-        <div className="grid grid-cols-3 gap-1">
-          {ALIGNMENTS.map(({ value, label, title }) => (
-            <button
-              key={value}
-              onClick={() => setAlignment(value)}
-              title={title}
-              className={`seg py-1.5 text-[11px] ${
-                alignment === value ? 'seg-active' : 'seg-idle'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {alignment !== 'optimize' && (
-          <p className="text-[10px] text-ink-muted">
-            Fixed alignment — the optimizer is paused while centering.
-          </p>
-        )}
       </div>
 
       {herringboneMismatch && (

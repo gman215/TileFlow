@@ -20,7 +20,7 @@ import {
   Vec2,
 } from '../types';
 import { boundingBoxOf, normalizeShape, pointInPolygon, rectShape } from '../utils/math';
-import { presetAssembly } from './assemblies';
+import { presetAssembly, ASSEMBLY_PRESETS, cloneAssembly } from './assemblies';
 import { interiorPoint } from './derive';
 import { newId } from './edit';
 import { DEFAULT_HEADER_RULES, IMPERIAL_FRAMING, METRIC_FRAMING } from '../framing/defaults';
@@ -115,6 +115,22 @@ export function planFromRoom(
     walls,
     assemblies: [assembly],
     rooms: [planRoom],
+    groups: [],
+    framingDefaults: { ...(system === 'metric' ? METRIC_FRAMING : IMPERIAL_FRAMING) },
+    openings: [],
+    junctions: [],
+    headerRules: DEFAULT_HEADER_RULES.map((r) => ({ ...r })),
+  };
+}
+
+/** A plan with nothing drawn and every preset build-up available. */
+export function emptyPlan(system: 'imperial' | 'metric' = 'imperial'): Plan {
+  return {
+    version: 2,
+    nodes: [],
+    walls: [],
+    assemblies: ASSEMBLY_PRESETS.map(cloneAssembly),
+    rooms: [],
     groups: [],
     framingDefaults: { ...(system === 'metric' ? METRIC_FRAMING : IMPERIAL_FRAMING) },
     openings: [],

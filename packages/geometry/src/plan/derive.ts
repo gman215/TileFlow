@@ -361,3 +361,12 @@ export function regionAt(plan: Plan, point: Vec2): Polygon | null {
   const finish = regionsAt(plan, 'finish');
   return regionAround(point, finish.regions, finish.mass)?.ring ?? null;
 }
+
+/**
+ * Every closed region the walls make, with a comfortable point inside each —
+ * what the store uses to add rooms by themselves when walls close a space.
+ */
+export function enclosedRegions(plan: Plan): { ring: Polygon; point: Vec2 }[] {
+  const finish = regionsAt(plan, 'finish');
+  return finish.regions.map((r) => ({ ring: r.ring, point: interiorPoint(r.ring, r.islands) }));
+}

@@ -6,6 +6,7 @@ import { formatDisplayFromMM, groutDisplay, roomDisplay } from '../../utils/meas
 import DimensionField from './DimensionField';
 import { LOCATION_LINES } from './PlanPanel';
 import { WallFramingSection } from './WallFraming';
+import InfoTip from './InfoTip';
 
 const FUNCTIONS: { value: LayerFunction; label: string }[] = [
   { value: 'finish', label: 'Finish' },
@@ -92,9 +93,12 @@ export default function WallPanel() {
   );
 
   return (
-    <div className="px-4 py-4 space-y-3">
+    <div className="px-4 py-4 space-y-3 border-l-4 border-amber-400 bg-amber-50/40">
       <div className="flex items-center justify-between">
-        <h3 className="section-header">Wall W{index}</h3>
+        <h3 className="section-header">
+          <span className="mr-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600">Selected</span>
+          Wall W{index}
+        </h3>
         <button onClick={() => selectWall(null)} className="text-[12px] text-ink-muted hover:text-ink" title="Deselect">
           ×
         </button>
@@ -189,6 +193,7 @@ export default function WallPanel() {
       </div>
 
       <div className="flex gap-1.5">
+        <InfoTip text="Which line of the wall is the one you drew: its middle, the stud face, or the drywall face on one side. Changing it never moves the wall." />
         <select
           className="input-field flex-1 py-1 text-[11px]"
           value={wall.locationLine}

@@ -24,6 +24,9 @@ import { snapPoint, snapGridMM } from '../../utils/snapping';
 import RoomShapeLayer, { ProposalGhost } from './RoomShapeLayer';
 import DrawLayer from './DrawLayer';
 import PlanLayer from './PlanLayer';
+import HintBar, { useHint } from './HintBar';
+import ToolIcon from './ToolIcon';
+import { regionAt } from '@tileflow/geometry';
 import { planBounds } from '../../store/planHelpers';
 import type { PlanTool } from '../../store/tileFlowStore';
 
@@ -53,17 +56,9 @@ const PATTERN_LABELS: Record<PatternType, string> = {
   'diagonal-45': '45° Diagonal',
 };
 
-const ALIGNMENTS: { value: AlignmentMode; label: string; title: string }[] = [
-  { value: 'optimize', label: 'Auto', title: 'Optimize offset to minimize waste' },
-  { value: 'center-tile', label: 'Center tile', title: 'Center a full tile on the room' },
-  { value: 'center-grout', label: 'Center joint', title: 'Run a grout joint through the room center' },
-];
 
-const PLAN_TOOLS: { value: PlanTool; label: string; title: string }[] = [
-  { value: 'select', label: 'Select', title: 'Pick a room or wall; drag corners and walls' },
-  { value: 'wall', label: 'Wall', title: 'Draw walls — click corners, type lengths' },
-  { value: 'room', label: 'Room', title: 'Click inside closed walls to place a room' },
-];
+
+
 
 /** Inactive rooms' tiles are drawn faded so the active one reads first. */
 const INACTIVE_ROOM_OPACITY = 0.45;
@@ -73,7 +68,11 @@ const SPAN_SNAP_PX = 12;
 
 const MIN_SCALE = 0.01;
 const MAX_SCALE = 5;
-const FIT_PADDING = 80;
+/**
+ * Room left around the fitted view for the chrome (010 R7): the toolbar and
+ * instruction line above, the stats card below, so Fit never hides an edge.
+ */
+const FIT_PAD = { top: 124, bottom: 150, side: 40 };
 
 interface View {
   x: number;
@@ -172,8 +171,6 @@ export default function TileCanvas() {
   const setRoomHeightMM = useTileFlowStore((s) => s.setRoomHeightMM);
   const system = useTileFlowStore((s) => s.system);
   const pattern = useTileFlowStore((s) => s.tileConfig.pattern);
-  const alignment = useTileFlowStore((s) => s.alignment);
-  const setAlignment = useTileFlowStore((s) => s.setAlignment);
   const editMode = useTileFlowStore((s) => s.editMode);
   const toggleEditMode = useTileFlowStore((s) => s.toggleEditMode);
   const manualOffsets = useTileFlowStore((s) => s.manualOffsets);
@@ -204,11 +201,18 @@ export default function TileCanvas() {
   const dimensionMode = useTileFlowStore((s) => s.dimensionMode);
   const setDimensionMode = useTileFlowStore((s) => s.setDimensionMode);
   const planNotice = useTileFlowStore((s) => s.planNotice);
+  const undoShape = useTileFlowStore((s) => s.undoShape);
+  const redoShape = useTileFlowStore((s) => s.redoShape);
+  const canUndo = useTileFlowStore((s) => s.shapePast.length > 0);
+  const canRedo = useTileFlowStore((s) => s.shapeFuture.length > 0);
+  const convertToPlan = useTileFlowStore((s) => s.convertToPlan);
+  const startDraw = useTileFlowStore((s) => s.startDraw);
+  const addRoomRect = useTileFlowStore((s) => s.addRoomRect);
+  const setHelpOpen = useTileFlowStore((s) => s.setHelpOpen);
   const clearPlanNotice = useTileFlowStore((s) => s.clearPlanNotice);
 
   const roomUnit = roomDisplay(system);
   const drawing = draft !== null;
-  const drawingWalls = draft?.kind === 'walls';
   const shapeEditing = !plan && !drawing && !editMode && Boolean(room.shape);
   const planEditing = Boolean(plan) && planTool === 'select' && !drawing && !editMode;
 
@@ -244,15 +248,13 @@ export default function TileCanvas() {
 
   const computeFitView = useCallback(
     (w: number, h: number): View => {
-      const scale = Math.min(
-        (w - FIT_PADDING) / bounds.w,
-        (h - FIT_PADDING) / bounds.h,
-        1
-      );
+      const availW = Math.max(100, w - 2 * FIT_PAD.side);
+      const availH = Math.max(100, h - FIT_PAD.top - FIT_PAD.bottom);
+      const scale = Math.min(availW / bounds.w, availH / bounds.h, 1);
       return {
         scale,
         x: (w - bounds.w * scale) / 2 - bounds.x * scale,
-        y: (h - bounds.h * scale) / 2 - bounds.y * scale,
+        y: FIT_PAD.top + (availH - bounds.h * scale) / 2 - bounds.y * scale,
       };
     },
     [bounds]
@@ -273,15 +275,18 @@ export default function TileCanvas() {
     }
   }, [size.width, size.height, fitToScreen]);
 
-  // Converting to a plan (or undoing back out of one) changes what the view
-  // should frame; refit once on that transition rather than on every edit.
-  const hadPlanRef = useRef(Boolean(plan));
+  // Converting to a plan (or undoing back out of one), opening an example or a
+  // saved project all change what the view should frame; refit on those, not
+  // on every edit.
+  const viewEpoch = useTileFlowStore((s) => s.viewEpoch);
+  const fitKey = `${Boolean(plan)}:${viewEpoch}`;
+  const fitKeyRef = useRef(fitKey);
   useEffect(() => {
-    if (hadPlanRef.current !== Boolean(plan)) {
-      hadPlanRef.current = Boolean(plan);
+    if (fitKeyRef.current !== fitKey) {
+      fitKeyRef.current = fitKey;
       fitToScreen();
     }
-  }, [plan, fitToScreen]);
+  }, [fitKey, fitToScreen]);
 
   const effectiveView: View =
     view ?? computeFitView(size.width || 800, size.height || 600);
@@ -346,7 +351,7 @@ export default function TileCanvas() {
     if (container) container.style.cursor = cursor;
   }, []);
 
-  const baseCursor = drawing ? 'crosshair' : editMode ? 'default' : 'grab';
+  const baseCursor = drawing || (plan && planTool === 'room') ? 'crosshair' : editMode ? 'default' : 'grab';
 
   useEffect(() => {
     setCursor(baseCursor);
@@ -464,10 +469,149 @@ export default function TileCanvas() {
   }, [snap, draft, addWalls, commitDraft, addDraftPoint, focusLengthInput]);
 
   const handleStagePointerMove = useCallback(() => {
-    if (!drawing) return;
+    const roomTool = plan && planTool === 'room';
+    if (!drawing && !roomTool) return;
     const pos = stageRef.current?.getRelativePointerPosition();
     if (pos) setPointerMM({ x: pos.x, y: pos.y });
-  }, [drawing]);
+  }, [drawing, plan, planTool]);
+
+  // ─── Room tool: a rectangle of walls in one gesture (010 R3) ─────────
+  // Drag from corner to corner, or click one corner then the other. A plain
+  // click inside closed walls that have no room makes that space a room.
+  const [rectStart, setRectStart] = useState<Vec2 | null>(null);
+  const rectDownAt = useRef<{ x: number; y: number } | null>(null);
+
+  const snapCorner = useCallback(
+    (raw: Vec2) =>
+      snapPoint(raw, {
+        anchor: null,
+        vertices: plan ? plan.nodes.map((n) => n.position) : [],
+        gridMM,
+        freeAngle: true,
+        scale,
+      }).point,
+    [plan, gridMM, scale]
+  );
+  const rectEnd = useMemo(
+    () => (rectStart && pointerMM ? snapCorner(pointerMM) : null),
+    [rectStart, pointerMM, snapCorner]
+  );
+
+  useEffect(() => {
+    if (!(plan && planTool === 'room')) setRectStart(null);
+  }, [plan, planTool]);
+
+  const finishRect = useCallback(
+    (end: Vec2) => {
+      if (!rectStart) return;
+      addRoomRect(rectStart, end, SPAN_SNAP_PX / scale);
+      setRectStart(null);
+    },
+    [rectStart, addRoomRect, scale]
+  );
+
+  const handleRectDown = useCallback(
+    (e: KonvaEventObject<MouseEvent>) => {
+      if (!(plan && planTool === 'room') || drawing || e.evt.button !== 0) return;
+      const pos = stageRef.current?.getRelativePointerPosition();
+      if (!pos) return;
+      rectDownAt.current = { x: e.evt.clientX, y: e.evt.clientY };
+      if (rectStart) finishRect(snapCorner(pos));
+      else setRectStart(snapCorner(pos));
+    },
+    [plan, planTool, drawing, rectStart, finishRect, snapCorner]
+  );
+
+  const handleRectUp = useCallback(
+    (e: KonvaEventObject<MouseEvent>) => {
+      const down = rectDownAt.current;
+      rectDownAt.current = null;
+      if (!(plan && planTool === 'room') || !down || !rectStart) return;
+      const moved = Math.hypot(e.evt.clientX - down.x, e.evt.clientY - down.y);
+      const pos = stageRef.current?.getRelativePointerPosition();
+      if (!pos) return;
+      if (moved > 8) {
+        finishRect(snapCorner(pos));
+      } else if (regionAt(plan, pos)) {
+        // A click, not a drag, inside closed walls: make that space a room.
+        setRectStart(null);
+        placeRoom({ x: pos.x, y: pos.y });
+      } else if (derived && plan.rooms.some((r) => derived.rooms.get(r.id)?.status === 'not-enclosed')) {
+        // A room has lost its walls: a click shows where they are open.
+        setRectStart(null);
+        placeRoom({ x: pos.x, y: pos.y });
+      }
+      // Otherwise a click on open floor: the first corner is set; the next click finishes.
+    },
+    [plan, derived, planTool, rectStart, finishRect, snapCorner, placeRoom]
+  );
+
+  // A drag that ends outside the canvas still finishes the room: the stage
+  // never sees that mouseup, so listen on the window while a drag is live.
+  useEffect(() => {
+    if (!rectStart) return;
+    const onUp = (evt: MouseEvent) => {
+      const stage = stageRef.current;
+      const down = rectDownAt.current;
+      if (!stage || !down || stage.container().contains(evt.target as Node)) return;
+      rectDownAt.current = null;
+      if (Math.hypot(evt.clientX - down.x, evt.clientY - down.y) <= 8) return;
+      stage.setPointersPositions(evt);
+      const pos = stage.getRelativePointerPosition();
+      if (pos) finishRect(snapCorner(pos));
+    };
+    window.addEventListener('mouseup', onUp);
+    return () => window.removeEventListener('mouseup', onUp);
+  }, [rectStart, finishRect, snapCorner]);
+
+  // ─── Keyboard shortcuts (010 R5) ─────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      const mod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+      if (mod && key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redoShape();
+        else undoShape();
+        return;
+      }
+      if (mod && key === 'y') {
+        e.preventDefault();
+        redoShape();
+        return;
+      }
+      if (mod || e.altKey) return;
+      if (e.key === '?') {
+        setHelpOpen(true);
+        return;
+      }
+      if (key === 'escape' && !drawing) {
+        setRectStart(null);
+        selectWall(null);
+        useTileFlowStore.getState().selectNode(null);
+        return;
+      }
+      if (drawing) return; // the drawing keys (Enter, Esc, Backspace) are handled above
+      const actions: Record<string, (() => void) | undefined> = {
+        v: () => (plan ? setPlanTool('select') : cancelDraft()),
+        r: plan ? () => setPlanTool('room') : undefined,
+        w: plan ? () => setPlanTool('wall') : undefined,
+        c: () => (!plan || activeRoomId ? startDraw('hole') : undefined),
+        d: plan ? undefined : () => startDraw('boundary'),
+        f: fitToScreen,
+        e: toggleEditMode,
+      };
+      const run = actions[key];
+      if (run) {
+        e.preventDefault();
+        run();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [plan, drawing, activeRoomId, undoShape, redoShape, setHelpOpen, selectWall, setPlanTool, cancelDraft, startDraw, fitToScreen, toggleEditMode]);
 
   const handleStageClick = useCallback(
     (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -476,18 +620,13 @@ export default function TileCanvas() {
         return;
       }
       if (!plan) return;
-      const pos = stageRef.current?.getRelativePointerPosition();
-      if (planTool === 'room' && pos) {
-        placeRoom({ x: pos.x, y: pos.y });
-        return;
-      }
       // A click on empty canvas (not a wall or handle) clears the wall selection.
       if (planTool === 'select' && e.target === stageRef.current) {
         selectWall(null);
         useTileFlowStore.getState().selectNode(null);
       }
     },
-    [drawing, placePoint, plan, planTool, placeRoom, selectWall]
+    [drawing, placePoint, plan, planTool, selectWall]
   );
 
   // Delete removes the selected wall (not while typing in a field).
@@ -638,46 +777,124 @@ export default function TileCanvas() {
 
   const gripLength = Math.min(60 / scale, room.height / 3);
 
+  const hint = useHint(rectStart !== null);
+  const tools: { id: string; label: string; title: string; key: string; icon: string; active: boolean; onClick: () => void }[] = plan
+    ? [
+        { id: 'select', label: 'Select', title: 'Select and move walls, corners, doors', key: 'V', icon: 'select', active: planTool === 'select' && !draft, onClick: () => setPlanTool('select') },
+        { id: 'room', label: 'Room', title: 'Drag a rectangle to add a room', key: 'R', icon: 'room', active: planTool === 'room', onClick: () => setPlanTool('room') },
+        { id: 'wall', label: 'Wall', title: 'Draw walls corner by corner', key: 'W', icon: 'wall', active: draft?.kind === 'walls', onClick: () => setPlanTool('wall') },
+        { id: 'cutout', label: 'Cut-out', title: 'Mark an area of the active room that is not tiled', key: 'C', icon: 'cutout', active: draft?.kind === 'hole', onClick: () => startDraw('hole') },
+      ]
+    : [
+        { id: 'select', label: 'Select', title: 'Resize the room, drag corners', key: 'V', icon: 'select', active: !draft, onClick: () => cancelDraft() },
+        { id: 'draw', label: 'Draw shape', title: 'Draw the floor outline corner by corner (L-shapes, bays)', key: 'D', icon: 'draw', active: draft?.kind === 'boundary', onClick: () => startDraw('boundary') },
+        { id: 'cutout', label: 'Cut-out', title: 'Mark an island, tub or column that is not tiled', key: 'C', icon: 'cutout', active: draft?.kind === 'hole', onClick: () => startDraw('hole') },
+      ];
+
   return (
     <div ref={containerRef} className="absolute inset-0">
-      {/* ── Toolbar: left pill — pattern + alignment ───────────────── */}
+      {/* ── Left: what the colours mean, and the pattern in use ───── */}
       <div
-        className="absolute top-3 left-3 z-10 flex items-center gap-1 rounded-full px-1.5 py-1 text-white shadow-lg"
+        className="absolute top-3 left-3 z-10 flex items-center gap-3 rounded-full px-3 py-1.5 text-white shadow-lg"
         style={PILL_STYLE}
       >
-        <span className="px-2.5 text-[12px] font-medium text-white/90 select-none">
-          {PATTERN_LABELS[pattern]}
-        </span>
+        <span className="text-[12px] font-medium text-white/90 select-none">{PATTERN_LABELS[pattern]}</span>
         <span className="h-4 w-px bg-white/15" />
-        {ALIGNMENTS.map(({ value, label, title }) => (
+        <span className="flex items-center gap-1.5 text-[11px] text-white/80">
+          <span className="w-3 h-3 rounded-sm" style={{ background: FULL_TILE_COLOR }} />
+          Full
+        </span>
+        <span className="flex items-center gap-1.5 text-[11px] text-white/80">
+          <span className="w-3 h-3 rounded-sm" style={{ background: CUT_TILE_COLOR }} />
+          Cut
+        </span>
+        {isComputing && <span className="text-[11px] text-white/60 animate-pulse select-none">computing…</span>}
+      </div>
+
+      {/* ── Centre: the tools, undo/redo (010 R5) ───────────────────── */}
+      <div
+        className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-0.5 rounded-full px-1.5 py-1 text-white shadow-lg"
+        style={PILL_STYLE}
+        role="toolbar"
+        aria-label="Tools"
+      >
+        {tools.map((t) => (
           <button
-            key={value}
-            onClick={() => setAlignment(value)}
-            title={title}
-            className={`px-2.5 py-1 text-[12px] font-medium rounded-full transition-colors ${
-              alignment === value
-                ? 'bg-white text-ink'
-                : 'text-white/70 hover:text-white hover:bg-white/10'
+            key={t.id}
+            onClick={t.onClick}
+            title={`${t.title} (${t.key})`}
+            aria-pressed={t.active}
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium rounded-full transition-colors ${
+              t.active ? 'bg-white text-ink' : 'text-white/75 hover:text-white hover:bg-white/10'
             }`}
           >
-            {label}
+            <ToolIcon name={t.icon} />
+            {t.label}
           </button>
         ))}
-        {isComputing && (
-          <span className="px-2 text-[11px] text-white/60 animate-pulse select-none">
-            computing…
-          </span>
+        <span className="mx-1 h-4 w-px bg-white/15" />
+        <button
+          onClick={undoShape}
+          disabled={!canUndo}
+          title="Undo (Ctrl+Z)"
+          aria-label="Undo"
+          className="rounded-full p-1.5 text-white/75 hover:bg-white/10 hover:text-white disabled:opacity-30"
+        >
+          <ToolIcon name="undo" />
+        </button>
+        <button
+          onClick={redoShape}
+          disabled={!canRedo}
+          title="Redo (Ctrl+Shift+Z)"
+          aria-label="Redo"
+          className="rounded-full p-1.5 text-white/75 hover:bg-white/10 hover:text-white disabled:opacity-30"
+        >
+          <ToolIcon name="redo" />
+        </button>
+        {plan ? (
+          <>
+            <span className="mx-1 h-4 w-px bg-white/15" />
+            {(['clear', 'centerline'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setDimensionMode(m)}
+                title={
+                  m === 'clear'
+                    ? 'Dimensions inside the room, drywall to drywall — what you tile'
+                    : 'Dimensions along the middle of each wall'
+                }
+                className={`px-2 py-1 text-[11px] font-medium rounded-full transition-colors ${
+                  dimensionMode === m ? 'bg-white/90 text-ink' : 'text-white/60 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                {m === 'clear' ? 'Inside' : 'Centre'}
+              </button>
+            ))}
+          </>
+        ) : (
+          <>
+            <span className="mx-1 h-4 w-px bg-white/15" />
+            <button
+              onClick={convertToPlan}
+              title="Floor plan — walls with real thickness, several rooms, doors (no shortcut)"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium rounded-full text-amber-300 hover:bg-white/10"
+            >
+              <ToolIcon name="plan" />
+              Make floor plan
+            </button>
+          </>
         )}
       </div>
 
-      {/* ── Toolbar: right pill — zoom + fit + edit toggle ─────────── */}
+      {/* ── Right: view ─────────────────────────────────────────────── */}
       <div
         className="absolute top-3 right-3 z-10 flex items-center gap-1 rounded-full px-1.5 py-1 text-white shadow-lg"
         style={PILL_STYLE}
       >
         <button
           onClick={() => zoomButtons(1 / 1.25)}
-          title="Zoom out"
+          title="Zoom out (scroll down)"
+          aria-label="Zoom out"
           className="w-7 h-7 text-sm rounded-full text-white/80 hover:bg-white/10 transition-colors"
         >
           −
@@ -687,14 +904,15 @@ export default function TileCanvas() {
         </span>
         <button
           onClick={() => zoomButtons(1.25)}
-          title="Zoom in"
+          title="Zoom in (scroll up)"
+          aria-label="Zoom in"
           className="w-7 h-7 text-sm rounded-full text-white/80 hover:bg-white/10 transition-colors"
         >
           +
         </button>
         <button
           onClick={fitToScreen}
-          title="Fit room to screen"
+          title="Fit to screen (F)"
           className="px-2.5 h-7 text-[12px] font-medium rounded-full text-white/80 hover:bg-white/10 transition-colors"
         >
           Fit
@@ -702,51 +920,43 @@ export default function TileCanvas() {
         <span className="h-4 w-px bg-white/15" />
         <button
           onClick={toggleEditMode}
-          title="Drag individual tiles to fine-tune"
+          title="Nudge individual tiles by dragging them (E)"
           className={`px-2.5 h-7 text-[12px] font-medium rounded-full transition-colors ${
-            editMode
-              ? 'bg-amber-400 text-ink'
-              : 'text-white/80 hover:bg-white/10'
+            editMode ? 'bg-amber-400 text-ink' : 'text-white/80 hover:bg-white/10'
           }`}
         >
           ✎ Edit tiles
         </button>
       </div>
 
-      {/* ── Toolbar: plan tools + dimension mode (floor plans only) ─── */}
-      {plan && (
-        <div
-          className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 rounded-full px-1.5 py-1 text-white shadow-lg"
-          style={PILL_STYLE}
-        >
-          {PLAN_TOOLS.map(({ value, label, title }) => (
-            <button
-              key={value}
-              onClick={() => setPlanTool(value)}
-              title={title}
-              className={`px-2.5 py-1 text-[12px] font-medium rounded-full transition-colors ${
-                planTool === value ? 'bg-white text-ink' : 'text-white/70 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-          <span className="h-4 w-px bg-white/15" />
-          {(['clear', 'centerline'] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setDimensionMode(m)}
-              title={m === 'clear' ? 'Dimensions finish face to finish face' : 'Dimensions on wall centrelines'}
-              className={`px-2.5 py-1 text-[12px] font-medium rounded-full transition-colors ${
-                dimensionMode === m ? 'bg-white text-ink' : 'text-white/70 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              {m === 'clear' ? 'Clear' : 'Centreline'}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* ── Under the toolbar: length entry while drawing, and the instruction line ── */}
+      <div className="pointer-events-none absolute left-1/2 top-[54px] z-20 flex -translate-x-1/2 flex-col items-center gap-2">
+        {draft && (
+          <div
+            className="pointer-events-auto flex items-center gap-2 rounded-full px-3 py-1.5 text-white shadow-lg"
+            style={PILL_STYLE}
+          >
+            <label className="flex items-center gap-1.5 text-[12px] text-white/70">
+              Length
+              <input
+                ref={lengthInputRef}
+                value={lengthText}
+                onChange={(e) => setLengthText(e.target.value)}
+                placeholder={roomUnit.unit === 'feet' ? '12 ft 6 in' : '4.2'}
+                aria-label="Length of the next wall"
+                className="w-28 rounded-md bg-white/10 px-2 py-1 text-[12px] font-mono text-white
+                           placeholder-white/30 outline-none focus:bg-white/15"
+              />
+            </label>
+            <span className="text-[11px] text-white/45">
+              {lockedLengthMM != null ? 'locked — click to place' : 'optional'}
+            </span>
+          </div>
+        )}
+        <HintBar text={hint} />
+      </div>
 
+      {/* Notices (refused edits, open walls) and edit-mode reset */}
       {plan && planNotice && (
         <button
           onClick={clearPlanNotice}
@@ -757,98 +967,14 @@ export default function TileCanvas() {
           {planNotice} ×
         </button>
       )}
-
-      {plan && planTool === 'room' && !planNotice && (
-        <div
-          className="absolute bottom-3 right-3 z-10 rounded-full px-3 py-1.5 text-[12px] text-white/70 shadow-lg"
-          style={PILL_STYLE}
+      {editMode && Object.keys(manualOffsets).length > 0 && (
+        <button
+          onClick={clearManualOffsets}
+          className="absolute top-[54px] right-3 z-10 px-2.5 py-1 text-[11px] font-medium rounded-full shadow-lg bg-red-500/85 text-white hover:bg-red-500 transition-colors"
         >
-          Click inside closed walls to place a room
-        </div>
+          Reset tile positions
+        </button>
       )}
-
-      {/* Edit-mode helper + reset (only while editing) */}
-      {editMode && (
-        <div className="absolute top-[60px] right-3 z-10 flex items-center gap-2">
-          <span
-            className="px-2.5 py-1 text-[11px] rounded-full text-amber-300 shadow-lg"
-            style={PILL_STYLE}
-          >
-            Drag individual tiles to fine-tune
-          </span>
-          {Object.keys(manualOffsets).length > 0 && (
-            <button
-              onClick={clearManualOffsets}
-              className="px-2.5 py-1 text-[11px] font-medium rounded-full shadow-lg bg-red-500/85 text-white hover:bg-red-500 transition-colors"
-            >
-              Reset positions
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Draw-mode HUD — length entry + what the keys do */}
-      {draft && (
-        <div
-          className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2"
-          style={{ top: plan ? 56 : 14 }}
-        >
-          {/* The HUD floats over the canvas; only the length box takes clicks. */}
-          <div
-            className="pointer-events-auto flex items-center gap-2 rounded-full px-3 py-1.5 text-white shadow-lg"
-            style={PILL_STYLE}
-          >
-            <span className="text-[12px] font-medium text-amber-300">
-              {draft.kind === 'boundary' ? 'Drawing room' : draft.kind === 'walls' ? 'Drawing walls' : 'Drawing cut-out'}
-            </span>
-            <span className="h-4 w-px bg-white/15" />
-            <label className="flex items-center gap-1.5 text-[12px] text-white/70">
-              Wall length
-              <input
-                ref={lengthInputRef}
-                value={lengthText}
-                onChange={(e) => setLengthText(e.target.value)}
-                placeholder={roomUnit.unit === 'feet' ? '12 ft 6 in' : '4.2'}
-                className="w-28 rounded-md bg-white/10 px-2 py-1 text-[12px] font-mono text-white
-                           placeholder-white/30 outline-none focus:bg-white/15"
-              />
-            </label>
-            <span className="text-[11px] text-white/45">
-              {lockedLengthMM != null ? 'locked — click to place' : 'type to lock'}
-            </span>
-          </div>
-
-          <div
-            className="rounded-full px-3 py-1 text-[11px] text-white/60 shadow-lg"
-            style={PILL_STYLE}
-          >
-            {drawingWalls
-              ? 'Click corners · snaps to walls & corners · Shift = free angle · Backspace undoes · Enter/Esc ends the chain · click the start to close'
-              : 'Click corners · Shift = free angle · Backspace undoes · Enter closes · Esc cancels'}
-          </div>
-        </div>
-      )}
-
-      {/* Legend chip — top-left, below the toolbar pill */}
-      <div
-        className="absolute top-[60px] left-3 z-10 flex items-center gap-3 rounded-full px-3 py-1.5 text-white shadow-lg"
-        style={PILL_STYLE}
-      >
-        <span className="flex items-center gap-1.5 text-[11px] text-white/80">
-          <span
-            className="w-3 h-3 rounded-sm"
-            style={{ background: FULL_TILE_COLOR }}
-          />
-          Full tile
-        </span>
-        <span className="flex items-center gap-1.5 text-[11px] text-white/80">
-          <span
-            className="w-3 h-3 rounded-sm"
-            style={{ background: CUT_TILE_COLOR }}
-          />
-          Cut tile
-        </span>
-      </div>
 
       <Stage
         ref={stageRef}
@@ -858,9 +984,11 @@ export default function TileCanvas() {
         y={effectiveView.y}
         scaleX={scale}
         scaleY={scale}
-        draggable={!editMode && !drawing}
+        draggable={!editMode && !drawing && !(plan && planTool === 'room')}
         onDragEnd={handleStageDragEnd}
         onWheel={handleWheel}
+        onMouseDown={handleRectDown}
+        onMouseUp={handleRectUp}
         onMouseMove={handleStagePointerMove}
         onClick={handleStageClick}
         onTap={handleStageClick}
@@ -1024,6 +1152,33 @@ export default function TileCanvas() {
           )}
 
           </>
+          )}
+
+          {/* The room rectangle being drawn */}
+          {rectStart && rectEnd && (
+            <Group listening={false}>
+              <Rect
+                x={Math.min(rectStart.x, rectEnd.x)}
+                y={Math.min(rectStart.y, rectEnd.y)}
+                width={Math.abs(rectEnd.x - rectStart.x)}
+                height={Math.abs(rectEnd.y - rectStart.y)}
+                stroke={EDIT_COLOR}
+                strokeWidth={2.5 / scale}
+                dash={[10 / scale, 6 / scale]}
+                fill="rgba(245,158,11,0.08)"
+              />
+              <Text
+                x={Math.min(rectStart.x, rectEnd.x)}
+                y={Math.min(rectStart.y, rectEnd.y) - 22 / scale}
+                text={`${formatDisplayFromMM(Math.abs(rectEnd.x - rectStart.x), roomUnit.unit, roomUnit.imperialFormat)} × ${formatDisplayFromMM(
+                  Math.abs(rectEnd.y - rectStart.y),
+                  roomUnit.unit,
+                  roomUnit.imperialFormat
+                )}`}
+                fontSize={14 / scale}
+                fill={EDIT_COLOR}
+              />
+            </Group>
           )}
 
           {/* The outline being drawn */}

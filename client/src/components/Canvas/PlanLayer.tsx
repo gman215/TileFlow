@@ -34,8 +34,11 @@ const WOOD = '#E3CFA3';
 const WOOD_EDGE = 'rgba(27,26,24,0.55)';
 const GLASS = '#BFD9EE';
 
-/** Studs are drawn in plan once a 1½″ stud is at least this wide on screen (009 AC-8.1). */
-const STUDS_MIN_PX = 4;
+/**
+ * Studs are drawn in plan once a 1½″ stud is at least this wide on screen.
+ * 009 drew them from 4 px; at a fitted view that made the plan busy (010 R7).
+ */
+const STUDS_MIN_PX = 8;
 
 const MM2_PER_M2 = 1_000_000;
 const MM2_PER_FT2 = 92_903.04;
