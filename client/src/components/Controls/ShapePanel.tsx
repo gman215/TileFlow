@@ -43,6 +43,7 @@ export default function ShapePanel() {
   const redoShape = useTileFlowStore((s) => s.redoShape);
   const canUndo = useTileFlowStore((s) => s.shapePast.length > 0);
   const canRedo = useTileFlowStore((s) => s.shapeFuture.length > 0);
+  const convertToPlan = useTileFlowStore((s) => s.convertToPlan);
 
   const display = roomDisplay(system);
   const imperial = system === 'imperial';
@@ -123,6 +124,17 @@ export default function ShapePanel() {
           </>
         )}
       </div>
+
+      {!drawing && (
+        <button
+          onClick={convertToPlan}
+          className="w-full rounded-lg border border-hairline px-2 py-1.5 text-[12px] font-medium
+                     text-ink hover:bg-hairline transition-colors"
+          title="Wrap this room in real walls (studs, drywall) and add more rooms. The floor and tile count stay the same."
+        >
+          Convert to floor plan
+        </button>
+      )}
 
       {shape && !drawing && (
         <button

@@ -48,6 +48,31 @@ A real-time tile layout optimizer that helps users plan tile installations by de
 - **Square to a wall** — Pick a reference wall (⌗) and the tile grid runs parallel to it, anchored on its midpoint — how a floor is actually set out, rather than to the bounding box
 - **Edit freely** — Drag any corner, undo/redo outline changes, or reset back to a rectangle. Self-crossing outlines and stray cut-outs are flagged before they are tiled
 
+### Floor Plans — multiple rooms, real walls
+
+- **Opt-in** — **Convert to floor plan** wraps the current room in walls without moving the floor: the
+  tile count is identical before and after, and one undo takes it back to a single room
+- **Walls with real build-ups** — every wall is a layered assembly at actual lumber sizes: Interior
+  2×4 (½″ drywall · 3½″ stud · ½″ drywall = 4½″), 2×6 plumbing wall, wet wall with ½″ cement board,
+  exterior 2×6 with OSB, and metric 89/140 mm equivalents. Edit any layer, save your own, or **flip**
+  a wall to put the cement board toward the shower
+- **Location line** — draw on the wall centreline, the stud face or the finish face, as in Revit;
+  changing it never moves the wall
+- **Rooms come from the walls** — place a room by clicking inside closed walls. Its floor is the
+  finish face all the way round, with mitred corners at any angle. Open a wall and the room says
+  **Not enclosed** instead of disappearing; delete a partition and both rooms are flagged
+  **Redundant**
+- **Three numbers per room** — clear (drywall to drywall), framing (stud to stud) and tileable (after
+  the ¼″ expansion gap hidden under the baseboard). Type a tape-measured clear length and the wall
+  moves to match
+- **A layout per room** — each room has its own tile, pattern and alignment; project totals sum
+  them by product. Only the rooms an edit touches are recomputed
+- **Continuous patterns** — link rooms into a pattern group and the grout lines run straight from the
+  kitchen into the hall: one tile, one plan-space lattice, one offset searched over all the rooms
+  together
+- **Plan view** — walls drawn as poché with each layer and a hatched stud core when zoomed in; clear
+  or centreline dimension strings
+
 ### Measurements
 
 - **Metric / Imperial Toggle** — One switch in the top app bar drives the whole app; each field uses the unit a pro would actually use:
@@ -321,7 +346,7 @@ The client calls the API at the relative base `/api` (see `client/src/api/client
 
 | Model | Description |
 |---|---|
-| **Project** | Top-level entity with name and timestamps |
+| **Project** | Top-level entity with name and timestamps, and an optional `plan` JSON (walls, nodes, assemblies, rooms, pattern groups). Rooms are stored as placement points and re-derived from the walls on load, so no stored geometry can disagree with them |
 | **Room** | 1:1 with Project — width, height (mm; the bounding box when an outline is drawn), display unit preference (`m` or `feet`), and an optional `shape` JSON holding the drawn outline, its cut-outs and reference wall |
 | **TileConfig** | 1:1 with Project — tile dimensions (mm), grout, pattern, α/β weights |
 | **SavedLayout** | Many per Project — serialized layout result, config snapshot, score, optional label |

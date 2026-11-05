@@ -17,6 +17,7 @@ export function useProjectActions() {
   const system = useTileFlowStore((s) => s.system);
   const tileConfig = useTileFlowStore((s) => s.tileConfig);
   const optimizationConfig = useTileFlowStore((s) => s.optimizationConfig);
+  const plan = useTileFlowStore((s) => s.plan);
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -44,6 +45,9 @@ export function useProjectActions() {
           alpha: optimizationConfig.weights.alpha,
           beta: optimizationConfig.weights.beta,
         },
+        // In a plan, room/tileConfig above are the active room's; the plan is
+        // the source of truth. null clears a plan the project used to have.
+        plan: plan ?? null,
       };
 
       if (projectId) {
@@ -72,8 +76,30 @@ export function useProjectActions() {
       }
       // Load most recent project
       const latest = projects[0];
+      // Refuse before adopting its id: a later Save would otherwise overwrite
+      // a newer plan with whatever is open now.
+      if (latest.plan && (latest.plan as { version?: unknown }).version !== 1) {
+        setMessage('This project was saved by a newer version of TileFlow.');
+        setTimeout(() => setMessage(''), 3000);
+        return;
+      }
       setProjectId(latest.id);
       setProjectName(latest.name);
+
+      const store0 = useTileFlowStore.getState();
+      if (latest.plan) {
+        if (!store0.loadPlan(latest.plan)) {
+          setMessage('This plan could not be opened.');
+          setTimeout(() => setMessage(''), 3000);
+          return;
+        }
+        if (latest.room) store0.setSystem(systemForUnit(latest.room.unit as any));
+        setMessage(`Loaded: ${latest.name}`);
+        setTimeout(() => setMessage(''), 3000);
+        return;
+      }
+      // A single-room project: leave any open plan first.
+      if (store0.plan) useTileFlowStore.setState({ plan: null, derived: null, activeRoomId: null, roomLayouts: {}, roomOrigins: {} });
 
       if (latest.room) {
         // Server stores dimensions in mm

@@ -2,6 +2,8 @@ import React from 'react';
 import TileCanvas from './components/Canvas/TileCanvas';
 import RoomPanel from './components/Controls/RoomPanel';
 import ShapePanel from './components/Controls/ShapePanel';
+import PlanPanel from './components/Controls/PlanPanel';
+import WallPanel from './components/Controls/WallPanel';
 import TilePanel from './components/Controls/TilePanel';
 import OptimizationPanel from './components/Controls/OptimizationPanel';
 import StatsPanel from './components/Controls/StatsPanel';
@@ -57,6 +59,8 @@ export default function App() {
   useLayoutWorker();
 
   const projectName = useTileFlowStore((s) => s.projectName);
+  const inPlan = useTileFlowStore((s) => s.plan !== null);
+  const wallSelected = useTileFlowStore((s) => s.selectedWallId !== null);
   const { saving, projectId, handleSave } = useProjectActions();
 
   return (
@@ -90,8 +94,17 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar — grouped sections split by hairline dividers */}
         <aside className="w-[312px] flex-shrink-0 overflow-y-auto bg-white border-r border-hairline divide-y divide-divider">
-          <RoomPanel />
-          <ShapePanel />
+          {inPlan ? (
+            <>
+              <PlanPanel />
+              {wallSelected && <WallPanel />}
+            </>
+          ) : (
+            <>
+              <RoomPanel />
+              <ShapePanel />
+            </>
+          )}
           <TilePanel />
           <OptimizationPanel />
           <ProjectPanel />

@@ -40,6 +40,8 @@ other and can be built in any order; the order below is by demo impact.
 | 005 | [cost-estimator](005-cost-estimator/) | `feat/005-cost-estimator` | Not started | `POST /api/ai/estimate` | structured output |
 | 006 | Demo narrative | `feat/006-demo-narrative` | In progress (3/8) — README done; GIF and `docs/DEMO.md` outstanding | — | — |
 | 007 | [upstream-resilience](007-upstream-resilience/) | `feat/007-upstream-resilience` | **Complete (8/8)** — provider refusals degrade to demo content | — | — |
+| 008 | [floor-plan](008-floor-plan/) | `feat/008-floor-plan` | **Complete (21/21)** — walls, derived rooms, per-room layouts, pattern groups; verified in browser and against Postgres | — | — |
+| 009 | [wall-framing](009-wall-framing/) | `feat/009-wall-framing` | Proposed — ready once 008 is merged | — | — |
 
 Update the Status column as specs complete. `/spec-status` reports unchecked tasks across all of
 them.

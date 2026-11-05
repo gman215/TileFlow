@@ -19,6 +19,10 @@ model Project {
   room       Room?
   tileConfig TileConfig?
   layouts    SavedLayout[]
+
+  /// Floor plan (008): walls, assemblies, rooms, pattern groups. Null = single room.
+  /// Room and TileConfig still hold the active room, so lists and older clients work.
+  plan Json?
 }
 
 model Room {

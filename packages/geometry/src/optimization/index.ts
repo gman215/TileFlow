@@ -22,7 +22,7 @@ import {
   PlacedTile,
   OptimizationWeights,
 } from '../types';
-import { generateTiles, getPatternUnit } from '../patterns';
+import { generateTiles, getPatternUnit, type PatternFrame } from '../patterns';
 import { patternFrameFor } from '../shape';
 import { prepareClipShape, clipTileToShape, type ClipShape } from '../clipping';
 import { polygonArea } from '../utils/math';
@@ -39,7 +39,14 @@ export function computeLayout(
   offsetY: number,
   weights: OptimizationWeights,
   /** Pre-processed floor; pass it in to clip many offsets against one shape */
-  prepared?: ClipShape
+  prepared?: ClipShape,
+  /**
+   * Set the pattern out from this frame instead of the room's own reference
+   * wall or centre. Rooms in a pattern group all pass the same plan-space
+   * frame (shifted into their own coordinates), which is what puts their
+   * tiles on one lattice.
+   */
+  frame?: PatternFrame
 ): LayoutResult {
   const clipShape = prepared ?? prepareClipShape(room);
 
@@ -49,7 +56,7 @@ export function computeLayout(
     areaHeight: clipShape.height,
     offsetX,
     offsetY,
-    frame: patternFrameFor(room),
+    frame: frame ?? patternFrameFor(room),
   });
 
   const roomArea = clipShape.area;
@@ -150,10 +157,10 @@ export interface OptimizationResult {
  * budget of tile-clips and thin the search to fit — the offsets that survive
  * still span the whole period, just more coarsely.
  */
-const CANDIDATE_BUDGET_TILE_CLIPS = 120_000;
+export const CANDIDATE_BUDGET_TILE_CLIPS = 120_000;
 const MIN_CANDIDATES_PER_AXIS = 3;
 
-function candidateStep(
+export function candidateStep(
   requestedStep: number,
   tilesPerCandidate: number
 ): { step: number; reduced: boolean } {
