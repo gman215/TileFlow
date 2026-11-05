@@ -23,6 +23,9 @@ import {
 import { snapPoint, snapGridMM } from '../../utils/snapping';
 import RoomShapeLayer, { ProposalGhost } from './RoomShapeLayer';
 import DrawLayer from './DrawLayer';
+import PlanLayer from './PlanLayer';
+import { planBounds } from '../../store/planHelpers';
+import type { PlanTool } from '../../store/tileFlowStore';
 
 const FULL_TILE_COLOR = '#8FB3D9';
 const CUT_TILE_COLOR = '#E0A074';
@@ -55,6 +58,18 @@ const ALIGNMENTS: { value: AlignmentMode; label: string; title: string }[] = [
   { value: 'center-tile', label: 'Center tile', title: 'Center a full tile on the room' },
   { value: 'center-grout', label: 'Center joint', title: 'Run a grout joint through the room center' },
 ];
+
+const PLAN_TOOLS: { value: PlanTool; label: string; title: string }[] = [
+  { value: 'select', label: 'Select', title: 'Pick a room or wall; drag corners and walls' },
+  { value: 'wall', label: 'Wall', title: 'Draw walls — click corners, type lengths' },
+  { value: 'room', label: 'Room', title: 'Click inside closed walls to place a room' },
+];
+
+/** Inactive rooms' tiles are drawn faded so the active one reads first. */
+const INACTIVE_ROOM_OPACITY = 0.45;
+
+/** How close (on screen) a click must be to a wall to land on it. */
+const SPAN_SNAP_PX = 12;
 
 const MIN_SCALE = 0.01;
 const MAX_SCALE = 5;
@@ -172,9 +187,30 @@ export default function TileCanvas() {
   const cancelDraft = useTileFlowStore((s) => s.cancelDraft);
   const commitDraft = useTileFlowStore((s) => s.commitDraft);
 
+  // Floor plan
+  const plan = useTileFlowStore((s) => s.plan);
+  const derived = useTileFlowStore((s) => s.derived);
+  const planTool = useTileFlowStore((s) => s.planTool);
+  const setPlanTool = useTileFlowStore((s) => s.setPlanTool);
+  const activeRoomId = useTileFlowStore((s) => s.activeRoomId);
+  const setActiveRoom = useTileFlowStore((s) => s.setActiveRoom);
+  const roomLayouts = useTileFlowStore((s) => s.roomLayouts);
+  const roomOrigins = useTileFlowStore((s) => s.roomOrigins);
+  const placeRoom = useTileFlowStore((s) => s.placeRoom);
+  const addWalls = useTileFlowStore((s) => s.addWalls);
+  const selectWall = useTileFlowStore((s) => s.selectWall);
+  const selectedWallId = useTileFlowStore((s) => s.selectedWallId);
+  const deletePlanWall = useTileFlowStore((s) => s.deletePlanWall);
+  const dimensionMode = useTileFlowStore((s) => s.dimensionMode);
+  const setDimensionMode = useTileFlowStore((s) => s.setDimensionMode);
+  const planNotice = useTileFlowStore((s) => s.planNotice);
+  const clearPlanNotice = useTileFlowStore((s) => s.clearPlanNotice);
+
   const roomUnit = roomDisplay(system);
   const drawing = draft !== null;
-  const shapeEditing = !drawing && !editMode && Boolean(room.shape);
+  const drawingWalls = draft?.kind === 'walls';
+  const shapeEditing = !plan && !drawing && !editMode && Boolean(room.shape);
+  const planEditing = Boolean(plan) && planTool === 'select' && !drawing && !editMode;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<any>(null);
@@ -196,20 +232,30 @@ export default function TileCanvas() {
   // ─── View transform (pan + zoom) ────────────────────────────────────
   const [view, setView] = useState<View | null>(null);
 
+  // What "Fit" frames: the whole plan (walls included), or the one room.
+  const bounds = useMemo(() => {
+    const b = plan ? planBounds(plan) : null;
+    if (b) {
+      const pad = 300;
+      return { x: b.minX - pad, y: b.minY - pad, w: b.maxX - b.minX + 2 * pad, h: b.maxY - b.minY + 2 * pad };
+    }
+    return { x: 0, y: 0, w: room.width, h: room.height };
+  }, [plan, room.width, room.height]);
+
   const computeFitView = useCallback(
     (w: number, h: number): View => {
       const scale = Math.min(
-        (w - FIT_PADDING) / room.width,
-        (h - FIT_PADDING) / room.height,
+        (w - FIT_PADDING) / bounds.w,
+        (h - FIT_PADDING) / bounds.h,
         1
       );
       return {
         scale,
-        x: (w - room.width * scale) / 2,
-        y: (h - room.height * scale) / 2,
+        x: (w - bounds.w * scale) / 2 - bounds.x * scale,
+        y: (h - bounds.h * scale) / 2 - bounds.y * scale,
       };
     },
-    [room.width, room.height]
+    [bounds]
   );
 
   const fitToScreen = useCallback(() => {
@@ -226,6 +272,16 @@ export default function TileCanvas() {
       fitToScreen();
     }
   }, [size.width, size.height, fitToScreen]);
+
+  // Converting to a plan (or undoing back out of one) changes what the view
+  // should frame; refit once on that transition rather than on every edit.
+  const hadPlanRef = useRef(Boolean(plan));
+  useEffect(() => {
+    if (hadPlanRef.current !== Boolean(plan)) {
+      hadPlanRef.current = Boolean(plan);
+      fitToScreen();
+    }
+  }, [plan, fitToScreen]);
 
   const effectiveView: View =
     view ?? computeFitView(size.width || 800, size.height || 600);
@@ -314,15 +370,74 @@ export default function TileCanvas() {
   /** Where the next corner would land, with snapping applied. */
   const snap = useMemo(() => {
     if (!draft || !pointerMM) return null;
-    return snapPoint(pointerMM, {
-      anchor: draft.points[draft.points.length - 1] ?? null,
-      vertices: draft.points,
+    const anchor = draft.points[draft.points.length - 1] ?? null;
+    if (draft.kind !== 'walls' || !plan) {
+      return snapPoint(pointerMM, {
+        anchor,
+        vertices: draft.points,
+        gridMM,
+        freeAngle: shiftHeld,
+        scale,
+        lockedLengthMM,
+      });
+    }
+
+    // Walls: existing corners join, and a wall's span takes a T-junction.
+    const nodePositions = plan.nodes.map((n) => n.position);
+    const base = snapPoint(pointerMM, {
+      anchor,
+      vertices: [...draft.points, ...nodePositions],
       gridMM,
       freeAngle: shiftHeld,
       scale,
       lockedLengthMM,
     });
-  }, [draft, pointerMM, gridMM, shiftHeld, scale, lockedLengthMM]);
+    const first = draft.points[0];
+    const closesRing =
+      base.kind === 'corner' &&
+      draft.points.length >= 3 &&
+      Math.hypot(base.point.x - first.x, base.point.y - first.y) < 1e-6;
+    if (base.kind === 'corner' || lockedLengthMM != null) return { ...base, closesRing };
+
+    const threshold = SPAN_SNAP_PX / scale;
+    const byId = new Map(plan.nodes.map((n) => [n.id, n.position]));
+    for (const w of plan.walls) {
+      const a = byId.get(w.a);
+      const b = byId.get(w.b);
+      if (!a || !b) continue;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 1e-9) continue;
+      const t = ((pointerMM.x - a.x) * dx + (pointerMM.y - a.y) * dy) / len2;
+      if (t <= 0 || t >= 1) continue;
+      const onWall = { x: a.x + t * dx, y: a.y + t * dy };
+      if (Math.hypot(onWall.x - pointerMM.x, onWall.y - pointerMM.y) > threshold) continue;
+
+      // Keep the 90°/45° direction if there is one: land where that ray meets
+      // the wall, so a square partition stays square.
+      let point = onWall;
+      if (anchor && base.kind === 'angle') {
+        const rx = base.point.x - anchor.x;
+        const ry = base.point.y - anchor.y;
+        const denom = rx * dy - ry * dx;
+        if (Math.abs(denom) > 1e-9) {
+          const s2 = ((a.x - anchor.x) * dy - (a.y - anchor.y) * dx) / denom;
+          const hit = { x: anchor.x + rx * s2, y: anchor.y + ry * s2 };
+          const th = ((hit.x - a.x) * dx + (hit.y - a.y) * dy) / len2;
+          if (s2 > 0 && th > 0 && th < 1) point = hit;
+        }
+      }
+      point = { x: Math.round(point.x * 1e6) / 1e6, y: Math.round(point.y * 1e6) / 1e6 };
+      return {
+        point,
+        kind: 'corner' as const,
+        closesRing: false,
+        lengthMM: anchor ? Math.hypot(point.x - anchor.x, point.y - anchor.y) : 0,
+      };
+    }
+    return { ...base, closesRing: false };
+  }, [draft, plan, pointerMM, gridMM, shiftHeld, scale, lockedLengthMM]);
 
   const focusLengthInput = useCallback(() => {
     // Konva swallows focus on click; keep typing going to the length box.
@@ -330,7 +445,14 @@ export default function TileCanvas() {
   }, []);
 
   const placePoint = useCallback(() => {
-    if (!snap) return;
+    if (!snap || !draft) return;
+    if (snap.closesRing && draft.kind === 'walls') {
+      // Clicking the chain's first corner closes it; the tool stays live.
+      addWalls(draft.points, true, 0);
+      useTileFlowStore.setState({ draft: { kind: 'walls', points: [] } });
+      setLengthText('');
+      return;
+    }
     if (snap.closesRing) {
       commitDraft();
       setLengthText('');
@@ -339,7 +461,7 @@ export default function TileCanvas() {
     addDraftPoint(snap.point);
     setLengthText('');
     focusLengthInput();
-  }, [snap, commitDraft, addDraftPoint, focusLengthInput]);
+  }, [snap, draft, addWalls, commitDraft, addDraftPoint, focusLengthInput]);
 
   const handleStagePointerMove = useCallback(() => {
     if (!drawing) return;
@@ -347,10 +469,38 @@ export default function TileCanvas() {
     if (pos) setPointerMM({ x: pos.x, y: pos.y });
   }, [drawing]);
 
-  const handleStageClick = useCallback(() => {
-    if (!drawing) return;
-    placePoint();
-  }, [drawing, placePoint]);
+  const handleStageClick = useCallback(
+    (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
+      if (drawing) {
+        placePoint();
+        return;
+      }
+      if (!plan) return;
+      const pos = stageRef.current?.getRelativePointerPosition();
+      if (planTool === 'room' && pos) {
+        placeRoom({ x: pos.x, y: pos.y });
+        return;
+      }
+      // A click on empty canvas (not a wall or handle) clears the wall selection.
+      if (planTool === 'select' && e.target === stageRef.current) selectWall(null);
+    },
+    [drawing, placePoint, plan, planTool, placeRoom, selectWall]
+  );
+
+  // Delete removes the selected wall (not while typing in a field).
+  useEffect(() => {
+    if (!plan || !selectedWallId || drawing) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.isContentEditable)) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        deletePlanWall(selectedWallId);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [plan, selectedWallId, drawing, deletePlanWall]);
 
   // Keyboard while drawing: Esc cancels, Enter closes, Backspace steps back.
   useEffect(() => {
@@ -361,7 +511,9 @@ export default function TileCanvas() {
 
       if (e.key === 'Escape') {
         e.preventDefault();
-        cancelDraft();
+        // Esc ends a wall chain, keeping what was drawn; anything else cancels.
+        if (draft?.kind === 'walls') commitDraft();
+        else cancelDraft();
         setLengthText('');
       } else if (e.key === 'Enter') {
         e.preventDefault();
@@ -395,6 +547,7 @@ export default function TileCanvas() {
     lockedLengthMM,
     lengthText,
     snap,
+    draft?.kind,
   ]);
 
   // Give the length box focus as soon as drawing starts.
@@ -447,6 +600,38 @@ export default function TileCanvas() {
       />
     ));
   }, [layout, scale, editMode, manualOffsets, handleTileDragEnd]);
+
+  // Every room's tiles, each shifted to where its room sits in the plan.
+  const planTileElements = useMemo(() => {
+    if (!plan) return null;
+    return plan.rooms.map((r) => {
+      const layout = roomLayouts[r.id];
+      const origin = roomOrigins[r.id];
+      const status = derived?.rooms.get(r.id)?.status;
+      if (!layout || !origin || status !== 'ok') return null;
+      const active = r.id === activeRoomId;
+      return (
+        <Group
+          key={r.id}
+          x={origin.x}
+          y={origin.y}
+          opacity={active ? 1 : INACTIVE_ROOM_OPACITY}
+          listening={active && editMode}
+        >
+          {layout.tiles.map((tile) => (
+            <TileShape
+              key={tile.id}
+              tile={tile}
+              scale={scale}
+              editMode={active && editMode}
+              offset={active ? manualOffsets[tile.id] : undefined}
+              onDragEnd={handleTileDragEnd}
+            />
+          ))}
+        </Group>
+      );
+    });
+  }, [plan, derived, roomLayouts, roomOrigins, activeRoomId, scale, editMode, manualOffsets, handleTileDragEnd]);
 
   const gripLength = Math.min(60 / scale, room.height / 3);
 
@@ -525,6 +710,60 @@ export default function TileCanvas() {
         </button>
       </div>
 
+      {/* ── Toolbar: plan tools + dimension mode (floor plans only) ─── */}
+      {plan && (
+        <div
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 rounded-full px-1.5 py-1 text-white shadow-lg"
+          style={PILL_STYLE}
+        >
+          {PLAN_TOOLS.map(({ value, label, title }) => (
+            <button
+              key={value}
+              onClick={() => setPlanTool(value)}
+              title={title}
+              className={`px-2.5 py-1 text-[12px] font-medium rounded-full transition-colors ${
+                planTool === value ? 'bg-white text-ink' : 'text-white/70 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+          <span className="h-4 w-px bg-white/15" />
+          {(['clear', 'centerline'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setDimensionMode(m)}
+              title={m === 'clear' ? 'Dimensions finish face to finish face' : 'Dimensions on wall centrelines'}
+              className={`px-2.5 py-1 text-[12px] font-medium rounded-full transition-colors ${
+                dimensionMode === m ? 'bg-white text-ink' : 'text-white/70 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              {m === 'clear' ? 'Clear' : 'Centreline'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {plan && planNotice && (
+        <button
+          onClick={clearPlanNotice}
+          className="absolute bottom-3 right-3 z-10 rounded-full px-3 py-1.5 text-[12px] text-red-300 shadow-lg"
+          style={PILL_STYLE}
+          title="Dismiss"
+        >
+          {planNotice} ×
+        </button>
+      )}
+
+      {plan && planTool === 'room' && !planNotice && (
+        <div
+          className="absolute bottom-3 right-3 z-10 rounded-full px-3 py-1.5 text-[12px] text-white/70 shadow-lg"
+          style={PILL_STYLE}
+        >
+          Click inside closed walls to place a room
+        </div>
+      )}
+
       {/* Edit-mode helper + reset (only while editing) */}
       {editMode && (
         <div className="absolute top-[60px] right-3 z-10 flex items-center gap-2">
@@ -548,15 +787,16 @@ export default function TileCanvas() {
       {/* Draw-mode HUD — length entry + what the keys do */}
       {draft && (
         <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2"
-          style={{ top: 14 }}
+          className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2"
+          style={{ top: plan ? 56 : 14 }}
         >
+          {/* The HUD floats over the canvas; only the length box takes clicks. */}
           <div
-            className="flex items-center gap-2 rounded-full px-3 py-1.5 text-white shadow-lg"
+            className="pointer-events-auto flex items-center gap-2 rounded-full px-3 py-1.5 text-white shadow-lg"
             style={PILL_STYLE}
           >
             <span className="text-[12px] font-medium text-amber-300">
-              {draft.kind === 'boundary' ? 'Drawing room' : 'Drawing cut-out'}
+              {draft.kind === 'boundary' ? 'Drawing room' : draft.kind === 'walls' ? 'Drawing walls' : 'Drawing cut-out'}
             </span>
             <span className="h-4 w-px bg-white/15" />
             <label className="flex items-center gap-1.5 text-[12px] text-white/70">
@@ -579,8 +819,9 @@ export default function TileCanvas() {
             className="rounded-full px-3 py-1 text-[11px] text-white/60 shadow-lg"
             style={PILL_STYLE}
           >
-            Click corners · Shift = free angle · Backspace undoes · Enter closes ·
-            Esc cancels
+            {drawingWalls
+              ? 'Click corners · snaps to walls & corners · Shift = free angle · Backspace undoes · Enter/Esc ends the chain · click the start to close'
+              : 'Click corners · Shift = free angle · Backspace undoes · Enter closes · Esc cancels'}
           </div>
         </div>
       )}
@@ -624,6 +865,32 @@ export default function TileCanvas() {
         style={{ background: BG_COLOR }}
       >
         <Layer>
+          {plan && derived ? (
+            <>
+              {/* Room floors — clicking one makes it the active room */}
+              {plan.rooms.map((r) => {
+                const d = derived.rooms.get(r.id);
+                if (!d?.finishBoundary || d.status === 'not-enclosed') return null;
+                return (
+                  <Line
+                    key={`floor-${r.id}`}
+                    points={polyToFlatPoints(d.finishBoundary)}
+                    closed
+                    fill={ROOM_FILL_COLOR}
+                    stroke={r.id === activeRoomId ? 'rgba(255,255,255,0.5)' : undefined}
+                    strokeWidth={2 / scale}
+                    listening={planEditing}
+                    onClick={() => setActiveRoom(r.id)}
+                    onTap={() => setActiveRoom(r.id)}
+                    perfectDrawEnabled={false}
+                  />
+                );
+              })}
+              {planTileElements}
+              <PlanLayer scale={scale} interactive={planEditing} />
+            </>
+          ) : (
+          <>
           {/* Floor — the drawn outline, or the plain rectangle */}
           {room.shape ? (
             <Line
@@ -751,6 +1018,9 @@ export default function TileCanvas() {
                 listening={false}
               />
             </>
+          )}
+
+          </>
           )}
 
           {/* The outline being drawn */}

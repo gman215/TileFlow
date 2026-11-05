@@ -113,6 +113,124 @@ export interface TileConfig {
  */
 export type AlignmentMode = 'optimize' | 'center-tile' | 'center-grout';
 
+// ─── Floor plan (008) ─────────────────────────────────────────────────────────
+
+/**
+ * What a layer does in the wall. Exactly one layer is the `core` — the
+ * structure (studs) — which is what "stud face" dimensions are taken from.
+ */
+export type LayerFunction = 'finish' | 'substrate' | 'core' | 'sheathing' | 'air';
+
+export interface WallLayer {
+  /** "Drywall ½″", "2×4 stud", "Cement board ½″" */
+  material: string;
+  /** mm */
+  thickness: number;
+  function: LayerFunction;
+}
+
+export interface WallAssembly {
+  id: string;
+  name: string;
+  /** Left → right relative to the wall's a→b direction. Exactly one `core`. */
+  layers: WallLayer[];
+  /** Core framing, used by 009. Absent for a non-framed core (masonry). */
+  framing?: { studWidth: number; studDepth: number };
+}
+
+/**
+ * Which plane of the wall the drawn line is. Left/right are as seen on screen
+ * walking from a to b, so a wall drawn left-to-right has its left side up.
+ */
+export type LocationLine =
+  | 'centerline'
+  | 'core-center'
+  | 'finish-left'
+  | 'finish-right'
+  | 'core-left'
+  | 'core-right';
+
+/** A wall junction, in plan space (mm, y down) */
+export interface PlanNode {
+  id: string;
+  position: Vec2;
+}
+
+export interface PlanWall {
+  id: string;
+  /** Node ids */
+  a: string;
+  b: string;
+  assemblyId: string;
+  locationLine: LocationLine;
+  /** Swap left/right without moving the location line */
+  flipped?: boolean;
+}
+
+export interface PlanRoom {
+  id: string;
+  name: string;
+  /** Placement point — the room is the enclosed region containing it */
+  seed: Vec2;
+  /** Hand-drawn cut-outs (islands, tubs), plan space */
+  holes: Polygon[];
+  /** Movement joint left under the baseboard, mm */
+  expansionGap: number;
+  /**
+   * Square the layout to this wall. A wall id rather than an edge index: the
+   * derived boundary's edge order changes whenever a wall is edited.
+   */
+  referenceWallId?: string;
+  tileConfig: TileConfig;
+  alignment: AlignmentMode;
+  weights: OptimizationWeights;
+  /** When set, the group's tile settings apply instead of the room's own */
+  groupId?: string;
+}
+
+/**
+ * Rooms that share one tile and one plan-space pattern origin, so grout lines
+ * run straight from one into the next.
+ */
+export interface PatternGroup {
+  id: string;
+  roomIds: string[];
+  tileConfig: TileConfig;
+  alignment: AlignmentMode;
+  weights: OptimizationWeights;
+  /** Square the whole group to this wall (a wall id in the plan) */
+  referenceWallId?: string;
+}
+
+export interface Plan {
+  version: 1;
+  nodes: PlanNode[];
+  walls: PlanWall[];
+  assemblies: WallAssembly[];
+  rooms: PlanRoom[];
+  groups: PatternGroup[];
+}
+
+export type RoomStatus = 'ok' | 'not-enclosed' | 'redundant';
+
+/** A room's floor as the walls make it. Derived, never stored. */
+export interface DerivedRoom {
+  roomId: string;
+  status: RoomStatus;
+  /** Room-side finish faces — the clear room */
+  finishBoundary?: Polygon;
+  /** Stud faces — the framed room */
+  coreBoundary?: Polygon;
+  /** finishBoundary inset by the expansion gap — what is tiled */
+  tileBoundary?: Polygon;
+  /** Free-standing walls inside the room + hand-drawn holes, at tile level */
+  holes: Polygon[];
+  /** Which wall each tile-boundary edge came from, or null */
+  edgeWalls: (string | null)[];
+  /** A comfortable point inside the floor, for the room's label */
+  labelPoint?: Vec2;
+}
+
 // ─── Obstacle (future-ready) ──────────────────────────────────────────────────
 
 export type ObstacleShape = 'circle' | 'square' | 'rect' | 'polygon';
@@ -247,8 +365,42 @@ export interface WorkerErrorResponse {
   message: string;
 }
 
-export type WorkerRequest = LayoutRequest | OptimizeRequest;
+/** One room of a pattern group, already in layout coordinates */
+export interface GroupMemberInput {
+  roomId: string;
+  room: Room;
+  /** Plan-space position of the room's (0, 0) */
+  origin: Vec2;
+}
+
+/**
+ * Lay a pattern group out as one floor (008, R11). With `offset` the search
+ * is skipped — the drag fast path, as `LayoutRequest.offset` is for one room.
+ */
+export interface OptimizeGroupRequest {
+  type: 'optimize-group';
+  members: GroupMemberInput[];
+  tileConfig: TileConfig;
+  optimizationConfig: OptimizationConfig;
+  alignment: AlignmentMode;
+  /** The group's plan-space pattern frame */
+  frame: { origin: Vec2; angle: number };
+  offset?: { x: number; y: number };
+  requestId: string;
+}
+
+export interface GroupResultResponse {
+  type: 'group-result';
+  results: { roomId: string; result: LayoutResult }[];
+  offset: { x: number; y: number };
+  requestId: string;
+  computeTimeMs: number;
+  candidatesEvaluated: number;
+}
+
+export type WorkerRequest = LayoutRequest | OptimizeRequest | OptimizeGroupRequest;
 export type WorkerResponse =
   | LayoutResponse
   | OptimizeResponse
+  | GroupResultResponse
   | WorkerErrorResponse;

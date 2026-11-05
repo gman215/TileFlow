@@ -10,6 +10,10 @@ import type {
   AlignmentMode,
   Polygon,
   Vec2,
+  Plan,
+  DerivedFloors,
+  LocationLine,
+  WallAssembly,
 } from '@tileflow/geometry';
 import {
   DEFAULT_OPTIMIZATION_CONFIG,
@@ -19,16 +23,57 @@ import {
   moveVertex,
   deleteVertex,
   toMM,
+  deriveFloors,
+  toLayoutRoom,
+  planFromRoom,
+  regionAt,
+  addWallChain,
+  moveNode,
+  moveWallParallel,
+  deleteWall,
+  setAssembly,
+  setLocationLine,
+  flipWall,
+  setPlanWallLength,
+  setClearLength,
+  validatePlan,
+  newId,
+  presetAssembly,
+  cloneAssembly,
+  isValidAssembly,
+  pointInPolygon,
 } from '@tileflow/geometry';
 import type { MeasurementSystem } from '../utils/measurements';
+import {
+  roomById,
+  settingsOf,
+  patchSettings,
+  joinGroup as joinGroupIn,
+  leaveGroup as leaveGroupIn,
+  deleteRoom as deleteRoomIn,
+  nextRoomName,
+  openEnds,
+  type SettingsPatch,
+} from './planHelpers';
 
 // ─── State Shape ──────────────────────────────────────────────────────────────
 
-/** An outline being drawn: `kind` says whether it becomes the room or a cut-out. */
+/**
+ * An outline being drawn: `kind` says whether it becomes the room, a cut-out,
+ * or (in a floor plan) a chain of walls.
+ */
 export interface ShapeDraft {
-  kind: 'boundary' | 'hole';
+  kind: 'boundary' | 'hole' | 'walls';
   points: Vec2[];
 }
+
+/** What undo restores: the single room, or the whole plan when there is one. */
+export interface HistoryEntry {
+  room: Room;
+  plan: Plan | null;
+}
+
+export type PlanTool = 'select' | 'wall' | 'room';
 
 /**
  * An outline read from an image and offered for review (002-photo-to-room).
@@ -93,8 +138,8 @@ export interface TileFlowState {
   /** Drop the outline and go back to a plain W × H rectangle */
   resetToRect: () => void;
   /** Outline undo stacks — kept in state so the buttons can reflect them */
-  shapePast: Room[];
-  shapeFuture: Room[];
+  shapePast: HistoryEntry[];
+  shapeFuture: HistoryEntry[];
   undoShape: () => void;
   redoShape: () => void;
 
@@ -129,6 +174,61 @@ export interface TileFlowState {
   manualOffsets: Record<number, { dx: number; dy: number }>;
   setManualOffset: (tileId: number, dx: number, dy: number) => void;
   clearManualOffsets: () => void;
+
+  // ── Floor plan (008) ──────────────────────────────────────────────────
+  /** null = the single-room app, exactly as before plan mode existed */
+  plan: Plan | null;
+  /** Rooms, wall mass and seeds derived from `plan`; never persisted */
+  derived: DerivedFloors | null;
+  activeRoomId: string | null;
+  planTool: PlanTool;
+  selectedWallId: string | null;
+  /** Assembly and location line new walls are drawn with */
+  wallStyle: { assemblyId: string; locationLine: LocationLine };
+  dimensionMode: 'clear' | 'centerline';
+  /** One line shown over the canvas when an edit is refused or needs saying */
+  planNotice: string | null;
+  /** Open wall ends to highlight after a room could not be placed */
+  openEndHighlights: Vec2[];
+  /** Last layout per room id */
+  roomLayouts: Record<string, LayoutResult>;
+  /** Plan-space shift of each room's layout coordinates */
+  roomOrigins: Record<string, Vec2>;
+
+  convertToPlan: () => void;
+  /** Open a saved plan; false when it is from a newer version of the app */
+  loadPlan: (plan: Plan) => boolean;
+  setPlanTool: (tool: PlanTool) => void;
+  setActiveRoom: (id: string | null) => void;
+  selectWall: (id: string | null) => void;
+  setWallStyle: (style: Partial<TileFlowState['wallStyle']>) => void;
+  setDimensionMode: (m: 'clear' | 'centerline') => void;
+  clearPlanNotice: () => void;
+  /** Commit a chain of walls drawn on the canvas */
+  addWalls: (points: Vec2[], closed: boolean, toleranceMM: number) => boolean;
+  /** Place a room at a point; false (with a notice) when nothing encloses it */
+  placeRoom: (point: Vec2) => boolean;
+  movePlanNode: (id: string, to: Vec2) => void;
+  moveWall: (id: string, delta: Vec2) => void;
+  deletePlanWall: (id: string) => void;
+  setWallAssembly: (wallId: string, assemblyId: string) => void;
+  setWallLocationLine: (wallId: string, line: LocationLine) => void;
+  flipPlanWall: (wallId: string) => void;
+  /** Retype a wall: on its location line, or as a clear length on one side */
+  setPlanWallLengthMM: (wallId: string, mm: number, ref: 'location' | 'left' | 'right') => void;
+  /** Replace one of the plan's assemblies (layer edits) */
+  updateAssembly: (assembly: WallAssembly) => void;
+  /** Copy an assembly under a new name and put the wall on the copy */
+  saveAssemblyAs: (wallId: string, name: string) => void;
+  renameRoom: (id: string, name: string) => void;
+  deletePlanRoom: (id: string) => void;
+  setRoomExpansionGap: (id: string, mm: number) => void;
+  setRoomReferenceWall: (roomId: string, wallId: string | null) => void;
+  /** Continue the active room's pattern into another room */
+  continuePattern: (intoRoomId: string) => void;
+  leavePatternGroup: (roomId: string) => void;
+  /** Worker results: layouts keyed by room id; null clears a room */
+  setRoomLayouts: (updates: Record<string, LayoutResult | null>, timeMs: number) => void;
 
   // Project persistence
   projectId: string | null;
@@ -180,16 +280,118 @@ function polygonAreaOf(poly: Polygon): number {
   return Math.abs(sum / 2);
 }
 
+/**
+ * The single-room fields the existing panels read, as views of the active
+ * room. This is the seam that lets TilePanel, OptimizationPanel and StatsPanel
+ * work in plan mode without knowing plans exist.
+ */
+function activeView(
+  plan: Plan,
+  derived: DerivedFloors,
+  activeRoomId: string | null,
+  roomLayouts: Record<string, LayoutResult>,
+  fallback: { room: Room; tileConfig: TileConfig; alignment: AlignmentMode; optimizationConfig: OptimizationConfig }
+) {
+  const room = roomById(plan, activeRoomId);
+  if (!room) return { layout: null };
+  const settings = settingsOf(plan, room);
+  const d = derived.rooms.get(room.id);
+  const lr = d ? toLayoutRoom(d, room) : null;
+  return {
+    room: lr?.room ?? fallback.room,
+    tileConfig: settings.tileConfig,
+    alignment: settings.alignment,
+    optimizationConfig: { ...fallback.optimizationConfig, weights: settings.weights },
+    layout: roomLayouts[room.id] ?? null,
+  };
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 export const useTileFlowStore = create<TileFlowState>()(
   subscribeWithSelector((set, get) => {
-    /** Snapshot the room before an outline edit, and drop the redo trail. */
+    /** Snapshot the room (and plan) before an edit, and drop the redo trail. */
     const pushHistory = (room: Room) =>
       set((s) => ({
-        shapePast: [...s.shapePast.slice(-(HISTORY_LIMIT - 1)), room],
+        shapePast: [...s.shapePast.slice(-(HISTORY_LIMIT - 1)), { room, plan: s.plan }],
         shapeFuture: [],
       }));
+
+    /**
+     * Adopt a new plan: derive its rooms, re-centre room seeds so they follow
+     * their walls, and refresh the active-room view. Refuses (returning false,
+     * with a notice) a plan the derivation could not make sense of.
+     */
+    const commitPlan = (next: Plan, opts: { history?: boolean } = {}): boolean => {
+      const issues = validatePlan(next);
+      if (issues.length > 0) {
+        set({ planNotice: issues[0].message });
+        return false;
+      }
+      if (opts.history !== false && !get().interacting) pushHistory(get().room);
+
+      const derived = deriveFloors(next);
+      // Placement points stay put unless a wall reaches them — except mid-drag,
+      // where one mouse move can carry a wall well past a point, so rooms are
+      // kept centred on their floors until the drag ends.
+      const dragging = get().interacting;
+      const plan: Plan = {
+        ...next,
+        rooms: next.rooms.map((r) => {
+          const d = derived.rooms.get(r.id);
+          const seed = dragging && d?.status === 'ok' ? d.labelPoint : derived.seeds.get(r.id);
+          return seed ? { ...r, seed } : r;
+        }),
+      };
+
+      const s = get();
+      const activeRoomId =
+        s.activeRoomId && plan.rooms.some((r) => r.id === s.activeRoomId)
+          ? s.activeRoomId
+          : plan.rooms[0]?.id ?? null;
+      const roomOrigins: Record<string, Vec2> = {};
+      for (const r of plan.rooms) {
+        const d = derived.rooms.get(r.id);
+        const lr = d && toLayoutRoom(d, r);
+        if (lr) roomOrigins[r.id] = lr.origin;
+      }
+      set({
+        plan,
+        derived,
+        activeRoomId,
+        roomOrigins,
+        planNotice: null,
+        ...activeView(plan, derived, activeRoomId, s.roomLayouts, s),
+      });
+      return true;
+    };
+
+    /** Put an undo entry back: re-derive a plan, or return to the single room. */
+    const restore = (entry: HistoryEntry) => {
+      if (entry.plan) {
+        commitPlan(entry.plan, { history: false });
+      } else {
+        set({
+          plan: null,
+          derived: null,
+          activeRoomId: null,
+          selectedWallId: null,
+          roomLayouts: {},
+          roomOrigins: {},
+          planTool: 'select',
+          room: entry.room,
+          layout: null,
+        });
+      }
+    };
+
+    /** Settings setters write through to the active room (or its group). */
+    const patchActive = (patch: SettingsPatch): boolean => {
+      const { plan, activeRoomId } = get();
+      if (!plan) return false;
+      if (activeRoomId) commitPlan(patchSettings(plan, activeRoomId, patch), { history: false });
+      return true;
+    };
 
     return {
     // Room
@@ -225,7 +427,7 @@ export const useTileFlowStore = create<TileFlowState>()(
 
     endVertexDrag: () => set({ interacting: false }),
 
-    startDraw: (kind) => set({ draft: { kind, points: [] }, editMode: false }),
+    startDraw: (kind) => set({ draft: { kind, points: [] }, editMode: false, planNotice: null }),
 
     addDraftPoint: (pt) => {
       const { draft } = get();
@@ -239,14 +441,37 @@ export const useTileFlowStore = create<TileFlowState>()(
       set({ draft: { ...draft, points: draft.points.slice(0, -1) } });
     },
 
-    cancelDraft: () => set({ draft: null }),
+    cancelDraft: () =>
+      set((s) => ({
+        draft: s.draft?.kind === 'walls' ? { kind: 'walls', points: [] } : null,
+      })),
 
     commitDraft: () => {
-      const { draft, room } = get();
+      const { draft, room, plan, activeRoomId } = get();
+      if (draft?.kind === 'walls') {
+        // Enter/Esc end a wall chain without closing it; the tool stays live
+        // for the next chain.
+        const ok = draft.points.length >= 2 && get().addWalls(draft.points, false, 0);
+        if (ok || draft.points.length < 2) set({ draft: { kind: 'walls', points: [] } });
+        return ok;
+      }
       if (!draft || draft.points.length < 3) return false;
 
       const ring: Polygon = { vertices: draft.points.map((p) => ({ ...p })) };
       if (polygonAreaOf(ring) < MIN_SHAPE_AREA_MM2) return false;
+
+      // In a plan, a cut-out belongs to the active room, in plan coordinates.
+      if (plan && draft.kind === 'hole') {
+        if (!activeRoomId) return false;
+        const ok = commitPlan({
+          ...plan,
+          rooms: plan.rooms.map((r) =>
+            r.id === activeRoomId ? { ...r, holes: [...r.holes, ring] } : r
+          ),
+        });
+        if (ok) set({ draft: null });
+        return ok;
+      }
 
       pushHistory(room);
 
@@ -344,7 +569,16 @@ export const useTileFlowStore = create<TileFlowState>()(
     },
 
     deleteHole: (holeIndex) => {
-      const { room } = get();
+      const { room, plan, activeRoomId } = get();
+      if (plan) {
+        commitPlan({
+          ...plan,
+          rooms: plan.rooms.map((r) =>
+            r.id === activeRoomId ? { ...r, holes: r.holes.filter((_, i) => i !== holeIndex) } : r
+          ),
+        });
+        return;
+      }
       const current = shapeOf(room);
       pushHistory(room);
       set({
@@ -384,49 +618,58 @@ export const useTileFlowStore = create<TileFlowState>()(
     shapePast: [],
     shapeFuture: [],
 
-    undoShape: () =>
-      set((s) => {
-        if (s.shapePast.length === 0) return {};
-        return {
-          room: s.shapePast[s.shapePast.length - 1],
-          shapePast: s.shapePast.slice(0, -1),
-          shapeFuture: [s.room, ...s.shapeFuture].slice(0, HISTORY_LIMIT),
-          draft: null,
-        };
-      }),
+    undoShape: () => {
+      const s = get();
+      if (s.shapePast.length === 0) return;
+      const entry = s.shapePast[s.shapePast.length - 1];
+      set({
+        shapePast: s.shapePast.slice(0, -1),
+        shapeFuture: [{ room: s.room, plan: s.plan }, ...s.shapeFuture].slice(0, HISTORY_LIMIT),
+        draft: null,
+      });
+      restore(entry);
+    },
 
-    redoShape: () =>
-      set((s) => {
-        if (s.shapeFuture.length === 0) return {};
-        return {
-          room: s.shapeFuture[0],
-          shapeFuture: s.shapeFuture.slice(1),
-          shapePast: [...s.shapePast, s.room].slice(-HISTORY_LIMIT),
-          draft: null,
-        };
-      }),
+    redoShape: () => {
+      const s = get();
+      if (s.shapeFuture.length === 0) return;
+      const entry = s.shapeFuture[0];
+      set({
+        shapeFuture: s.shapeFuture.slice(1),
+        shapePast: [...s.shapePast, { room: s.room, plan: s.plan }].slice(-HISTORY_LIMIT),
+        draft: null,
+      });
+      restore(entry);
+    },
 
     // Tile config
     tileConfig: DEFAULT_TILE,
 
-    setTileSizeMM: (wMM: number, hMM: number) =>
+    setTileSizeMM: (wMM: number, hMM: number) => {
+      if (patchActive({ tileConfig: { width: wMM, height: hMM } })) return;
       set({
         tileConfig: { ...get().tileConfig, width: wMM, height: hMM },
-      }),
+      });
+    },
 
-    setGroutMM: (gMM: number) =>
+    setGroutMM: (gMM: number) => {
+      if (patchActive({ tileConfig: { grout: gMM } })) return;
       set({
         tileConfig: { ...get().tileConfig, grout: gMM },
-      }),
+      });
+    },
 
-    setPattern: (p: PatternType) =>
-      set({ tileConfig: { ...get().tileConfig, pattern: p } }),
+    setPattern: (p: PatternType) => {
+      if (patchActive({ tileConfig: { pattern: p } })) return;
+      set({ tileConfig: { ...get().tileConfig, pattern: p } });
+    },
 
     setTileOrientation: (orientation: 'horizontal' | 'vertical') => {
       const { width, height } = get().tileConfig;
       const landscape = width >= height;
       const wantLandscape = orientation === 'horizontal';
       if (landscape !== wantLandscape) {
+        if (patchActive({ tileConfig: { width: height, height: width } })) return;
         set({
           tileConfig: { ...get().tileConfig, width: height, height: width },
         });
@@ -435,26 +678,33 @@ export const useTileFlowStore = create<TileFlowState>()(
 
     // Alignment
     alignment: 'optimize' as AlignmentMode,
-    setAlignment: (a: AlignmentMode) => set({ alignment: a }),
+    setAlignment: (a: AlignmentMode) => {
+      if (patchActive({ alignment: a })) return;
+      set({ alignment: a });
+    },
 
     // Optimization
     optimizationConfig: { ...DEFAULT_OPTIMIZATION_CONFIG },
 
-    setAlpha: (a: number) =>
+    setAlpha: (a: number) => {
+      if (patchActive({ weights: { alpha: a } })) return;
       set({
         optimizationConfig: {
           ...get().optimizationConfig,
           weights: { ...get().optimizationConfig.weights, alpha: a },
         },
-      }),
+      });
+    },
 
-    setBeta: (b: number) =>
+    setBeta: (b: number) => {
+      if (patchActive({ weights: { beta: b } })) return;
       set({
         optimizationConfig: {
           ...get().optimizationConfig,
           weights: { ...get().optimizationConfig.weights, beta: b },
         },
-      }),
+      });
+    },
 
     // Layout
     layout: null,
@@ -484,6 +734,258 @@ export const useTileFlowStore = create<TileFlowState>()(
         manualOffsets: { ...s.manualOffsets, [tileId]: { dx, dy } },
       })),
     clearManualOffsets: () => set({ manualOffsets: {} }),
+
+    // ── Floor plan ────────────────────────────────────────────────────
+    plan: null,
+    derived: null,
+    activeRoomId: null,
+    planTool: 'select',
+    selectedWallId: null,
+    wallStyle: { assemblyId: 'interior-2x4', locationLine: 'centerline' },
+    dimensionMode: 'clear',
+    planNotice: null,
+    openEndHighlights: [],
+    roomLayouts: {},
+    roomOrigins: {},
+
+    // One undo step back to the single room. The floor is preserved exactly:
+    // the walls go outside the old outline (see planFromRoom).
+    convertToPlan: () => {
+      const s = get();
+      if (s.plan) return;
+      const assemblyId = s.system === 'metric' ? 'interior-89' : 'interior-2x4';
+      const plan = planFromRoom(
+        s.room,
+        { tileConfig: s.tileConfig, alignment: s.alignment, weights: s.optimizationConfig.weights },
+        assemblyId
+      );
+      // Every preset is available to the plan, not just the one it started with.
+      for (const id of [
+        'interior-2x4', 'interior-2x6', 'wet-2x4', 'exterior-2x6',
+        'interior-89', 'interior-140', 'wet-89',
+      ]) {
+        if (!plan.assemblies.some((a) => a.id === id)) plan.assemblies.push(presetAssembly(id)!);
+      }
+      pushHistory(s.room);
+      set({
+        activeRoomId: plan.rooms[0].id,
+        wallStyle: { assemblyId, locationLine: 'centerline' },
+        draft: null,
+        editMode: false,
+        // Carry the current layout over so the canvas doesn't flash empty;
+        // the worker replaces it within one debounce.
+        roomLayouts: s.layout ? { [plan.rooms[0].id]: s.layout } : {},
+      });
+      commitPlan(plan, { history: false });
+    },
+
+    loadPlan: (plan) => {
+      if ((plan as { version?: unknown }).version !== 1) return false;
+      const loaded: Plan = { ...plan, groups: plan.groups ?? [] };
+      set({ activeRoomId: loaded.rooms[0]?.id ?? null, roomLayouts: {}, selectedWallId: null, draft: null });
+      return commitPlan(loaded);
+    },
+
+    setPlanTool: (tool) =>
+      set({
+        planTool: tool,
+        draft: tool === 'wall' ? { kind: 'walls', points: [] } : null,
+        editMode: false,
+        planNotice: null,
+        openEndHighlights: [],
+      }),
+
+    setActiveRoom: (id) => {
+      const { plan, derived, roomLayouts } = get();
+      if (!plan || !derived) return;
+      set({
+        activeRoomId: id,
+        manualOffsets: {},
+        ...activeView(plan, derived, id, roomLayouts, get()),
+      });
+    },
+
+    selectWall: (id) => set({ selectedWallId: id }),
+    setWallStyle: (style) => set({ wallStyle: { ...get().wallStyle, ...style } }),
+    setDimensionMode: (m) => set({ dimensionMode: m }),
+    clearPlanNotice: () => set({ planNotice: null, openEndHighlights: [] }),
+
+    addWalls: (points, closed, toleranceMM) => {
+      const { plan, wallStyle } = get();
+      if (!plan || points.length < 2) return false;
+      const next = addWallChain(plan, points, wallStyle, { closed, tolerance: toleranceMM });
+      return commitPlan(next);
+    },
+
+    placeRoom: (point) => {
+      const { plan, derived, activeRoomId } = get();
+      if (!plan || !derived) return false;
+      if (!regionAt(plan, point)) {
+        set({
+          planNotice: "These walls don't close — the open ends are highlighted.",
+          openEndHighlights: openEnds(plan),
+        });
+        return false;
+      }
+      const taken = plan.rooms.some((r) => {
+        const d = derived.rooms.get(r.id);
+        return d?.finishBoundary && pointInPolygon(point, d.finishBoundary);
+      });
+      if (taken) {
+        set({ planNotice: 'There is already a room here.', openEndHighlights: [] });
+        return false;
+      }
+      // A new room starts with the active room's tile, like a second room of
+      // the same job usually does.
+      const template = roomById(plan, activeRoomId) ?? plan.rooms[0];
+      const settings = template
+        ? settingsOf(plan, template)
+        : { tileConfig: get().tileConfig, alignment: get().alignment, weights: get().optimizationConfig.weights };
+      const id = newId('r');
+      const ok = commitPlan({
+        ...plan,
+        rooms: [
+          ...plan.rooms,
+          {
+            id,
+            name: nextRoomName(plan),
+            seed: { ...point },
+            holes: [],
+            expansionGap: template?.expansionGap ?? 0,
+            ...settings,
+          },
+        ],
+      });
+      if (ok) {
+        set({ openEndHighlights: [] });
+        get().setActiveRoom(id);
+      }
+      return ok;
+    },
+
+    movePlanNode: (id, to) => {
+      const { plan } = get();
+      if (plan) commitPlan(moveNode(plan, id, to));
+    },
+
+    moveWall: (id, delta) => {
+      const { plan } = get();
+      if (plan) commitPlan(moveWallParallel(plan, id, delta));
+    },
+
+    deletePlanWall: (id) => {
+      const { plan } = get();
+      if (!plan) return;
+      if (commitPlan(deleteWall(plan, id))) set({ selectedWallId: null });
+    },
+
+    setWallAssembly: (wallId, assemblyId) => {
+      const { plan } = get();
+      if (plan) commitPlan(setAssembly(plan, wallId, assemblyId));
+    },
+
+    setWallLocationLine: (wallId, line) => {
+      const { plan } = get();
+      if (plan) commitPlan(setLocationLine(plan, wallId, line));
+    },
+
+    flipPlanWall: (wallId) => {
+      const { plan } = get();
+      if (plan) commitPlan(flipWall(plan, wallId));
+    },
+
+    setPlanWallLengthMM: (wallId, mm, ref) => {
+      const { plan } = get();
+      if (!plan) return;
+      commitPlan(
+        ref === 'location' ? setPlanWallLength(plan, wallId, mm) : setClearLength(plan, wallId, ref, mm)
+      );
+    },
+
+    updateAssembly: (assembly) => {
+      const { plan } = get();
+      if (!plan || !isValidAssembly(assembly)) {
+        set({ planNotice: 'A build-up needs exactly one structural (core) layer.' });
+        return;
+      }
+      commitPlan({
+        ...plan,
+        assemblies: plan.assemblies.map((a) => (a.id === assembly.id ? cloneAssembly(assembly) : a)),
+      });
+    },
+
+    saveAssemblyAs: (wallId, name) => {
+      const { plan } = get();
+      const wall = plan?.walls.find((w) => w.id === wallId);
+      const source = wall && plan!.assemblies.find((a) => a.id === wall.assemblyId);
+      if (!plan || !wall || !source) return;
+      const copy: WallAssembly = { ...cloneAssembly(source), id: newId('a'), name };
+      commitPlan({
+        ...plan,
+        assemblies: [...plan.assemblies, copy],
+        walls: plan.walls.map((w) => (w.id === wallId ? { ...w, assemblyId: copy.id } : w)),
+      });
+    },
+
+    renameRoom: (id, name) => {
+      const { plan } = get();
+      if (plan) commitPlan({ ...plan, rooms: plan.rooms.map((r) => (r.id === id ? { ...r, name } : r)) }, { history: false });
+    },
+
+    deletePlanRoom: (id) => {
+      const { plan } = get();
+      if (plan) commitPlan(deleteRoomIn(plan, id));
+    },
+
+    setRoomExpansionGap: (id, mm) => {
+      const { plan } = get();
+      const gap = Math.max(0, Math.min(20, mm));
+      if (plan) commitPlan({ ...plan, rooms: plan.rooms.map((r) => (r.id === id ? { ...r, expansionGap: gap } : r)) });
+    },
+
+    setRoomReferenceWall: (roomId, wallId) => {
+      const { plan } = get();
+      const room = plan && roomById(plan, roomId);
+      if (!plan || !room) return;
+      const ref = wallId ?? undefined;
+      // A grouped room squares the whole group: one lattice, one reference.
+      commitPlan(
+        room.groupId
+          ? { ...plan, groups: plan.groups.map((g) => (g.id === room.groupId ? { ...g, referenceWallId: ref } : g)) }
+          : { ...plan, rooms: plan.rooms.map((r) => (r.id === roomId ? { ...r, referenceWallId: ref } : r)) }
+      );
+    },
+
+    continuePattern: (intoRoomId) => {
+      const { plan, activeRoomId } = get();
+      if (plan && activeRoomId) commitPlan(joinGroupIn(plan, activeRoomId, intoRoomId, newId('g')));
+    },
+
+    leavePatternGroup: (roomId) => {
+      const { plan } = get();
+      if (plan) commitPlan(leaveGroupIn(plan, roomId));
+    },
+
+    setRoomLayouts: (updates, timeMs) =>
+      set((s) => {
+        const roomLayouts = { ...s.roomLayouts };
+        for (const [id, layout] of Object.entries(updates)) {
+          if (layout) roomLayouts[id] = layout;
+          else delete roomLayouts[id];
+        }
+        const active = s.activeRoomId ? roomLayouts[s.activeRoomId] ?? null : null;
+        return {
+          roomLayouts,
+          layout: active,
+          isComputing: false,
+          computeTimeMs: timeMs,
+          // Same rule as setLayout: nudges belong to the layout that made them.
+          manualOffsets:
+            s.activeRoomId && s.activeRoomId in updates && Object.keys(s.manualOffsets).length > 0
+              ? {}
+              : s.manualOffsets,
+        };
+      }),
 
     // Project
     projectId: null,

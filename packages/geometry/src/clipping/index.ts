@@ -180,7 +180,7 @@ export interface ClipShape {
 const GRID_TARGET_CELLS = 1024;
 const GRID_MAX_SIDE = 64;
 
-function polygonToRing(poly: Polygon): Ring {
+export function polygonToRing(poly: Polygon): Ring {
   const ring: Ring = poly.vertices.map((v) => [v.x, v.y] as [number, number]);
   // polygon-clipping is happiest with explicitly closed rings.
   if (ring.length > 0) {
@@ -191,7 +191,7 @@ function polygonToRing(poly: Polygon): Ring {
   return ring;
 }
 
-function ringToPolygon(ring: Ring): Polygon {
+export function ringToPolygon(ring: Ring): Polygon {
   const vertices: Vec2[] = ring.map(([x, y]) => ({ x, y }));
   // Drop the duplicated closing vertex — the rest of the engine treats
   // polygons as implicitly closed.

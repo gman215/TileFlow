@@ -41,10 +41,122 @@ export const TileConfigSchema = z.object({
   beta: z.number().min(0).max(1).default(0.3),
 });
 
+// ─── Floor plan (008) ─────────────────────────────────────────────────────────
+
+const Id = z.string().min(1).max(40);
+
+const PlanTileSchema = z.object({
+  width: z.number().positive().max(10000),
+  height: z.number().positive().max(10000),
+  grout: z.number().min(0).max(100),
+  pattern: PatternSchema,
+});
+
+const AlignmentSchema = z.enum(['optimize', 'center-tile', 'center-grout']);
+const WeightsSchema = z.object({ alpha: z.number().min(0).max(1), beta: z.number().min(0).max(1) });
+
+const LayerSchema = z.object({
+  material: z.string().max(60),
+  thickness: z.number().finite().min(0).max(1000),
+  function: z.enum(['finish', 'substrate', 'core', 'sheathing', 'air']),
+});
+
+const AssemblySchema = z
+  .object({
+    id: Id,
+    name: z.string().min(1).max(60),
+    layers: z.array(LayerSchema).min(1).max(12),
+    framing: z
+      .object({ studWidth: z.number().positive().max(1000), studDepth: z.number().positive().max(1000) })
+      .optional(),
+  })
+  .refine((a) => a.layers.filter((l) => l.function === 'core').length === 1, {
+    message: 'An assembly needs exactly one core layer',
+  });
+
+/**
+ * A floor plan. Only the inputs are stored — rooms are derived from the walls
+ * on load, so there is no geometry here that could disagree with them.
+ * Every reference is checked, so a plan that names a missing node or
+ * build-up is a 400 rather than a project that cannot be opened.
+ */
+export const PlanSchema = z
+  .object({
+    version: z.literal(1),
+    nodes: z.array(z.object({ id: Id, position: PointSchema })).max(1000),
+    walls: z
+      .array(
+        z.object({
+          id: Id,
+          a: Id,
+          b: Id,
+          assemblyId: Id,
+          locationLine: z.enum(['centerline', 'core-center', 'finish-left', 'finish-right', 'core-left', 'core-right']),
+          flipped: z.boolean().optional(),
+        })
+      )
+      .max(1500),
+    assemblies: z.array(AssemblySchema).max(50),
+    rooms: z
+      .array(
+        z.object({
+          id: Id,
+          name: z.string().min(1).max(60),
+          seed: PointSchema,
+          holes: z.array(PolygonSchema).max(50),
+          expansionGap: z.number().min(0).max(20),
+          referenceWallId: Id.optional(),
+          tileConfig: PlanTileSchema,
+          alignment: AlignmentSchema,
+          weights: WeightsSchema,
+          groupId: Id.optional(),
+        })
+      )
+      .max(100),
+    groups: z
+      .array(
+        z.object({
+          id: Id,
+          roomIds: z.array(Id).min(2).max(100),
+          tileConfig: PlanTileSchema,
+          alignment: AlignmentSchema,
+          weights: WeightsSchema,
+          referenceWallId: Id.optional(),
+        })
+      )
+      .max(50),
+  })
+  .superRefine((plan, ctx) => {
+    const nodes = new Set(plan.nodes.map((n) => n.id));
+    const assemblies = new Set(plan.assemblies.map((a) => a.id));
+    const rooms = new Set(plan.rooms.map((r) => r.id));
+    const groups = new Set(plan.groups.map((g) => g.id));
+    plan.walls.forEach((w, i) => {
+      if (!nodes.has(w.a) || !nodes.has(w.b)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['walls', i], message: 'Wall refers to a missing node' });
+      }
+      if (!assemblies.has(w.assemblyId)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['walls', i], message: 'Wall refers to a missing assembly' });
+      }
+    });
+    plan.rooms.forEach((r, i) => {
+      if (r.groupId && !groups.has(r.groupId)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['rooms', i], message: 'Room refers to a missing group' });
+      }
+    });
+    plan.groups.forEach((g, i) => {
+      if (g.roomIds.some((id) => !rooms.has(id))) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['groups', i], message: 'Group refers to a missing room' });
+      }
+    });
+  });
+
 export const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
   room: RoomSchema,
   tileConfig: TileConfigSchema,
+  /** Omitted or null for a single-room project */
+  plan: PlanSchema.nullish(),
 });
 
 export const UpdateProjectSchema = CreateProjectSchema.partial();

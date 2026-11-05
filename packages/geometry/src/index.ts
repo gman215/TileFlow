@@ -28,6 +28,7 @@ export {
   getPatternUnit,
   computeAlignmentOffset,
   type PatternGeneratorParams,
+  type PatternFrame,
 } from './patterns';
 
 // Shape editing
@@ -53,3 +54,6 @@ export {
   optimize,
   type OptimizationResult,
 } from './optimization';
+
+// Floor plans (walls, assemblies, derived rooms, pattern groups)
+export * from './plan';

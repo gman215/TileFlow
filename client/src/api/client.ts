@@ -13,7 +13,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
-import type { RoomShape } from '@tileflow/geometry';
+import type { Plan, RoomShape } from '@tileflow/geometry';
 
 export interface ProjectDTO {
   id: string;
@@ -35,6 +35,8 @@ export interface ProjectDTO {
     alpha: number;
     beta: number;
   } | null;
+  /** Floor plan (008); null or absent for a single-room project */
+  plan?: Plan | null;
 }
 
 export const api = {
@@ -58,6 +60,7 @@ export const api = {
       alpha: number;
       beta: number;
     };
+    plan?: Plan | null;
   }) =>
     request<ProjectDTO>('/projects', {
       method: 'POST',
@@ -82,6 +85,7 @@ export const api = {
         alpha: number;
         beta: number;
       };
+      plan: Plan | null;
     }>
   ) =>
     request<ProjectDTO>(`/projects/${id}`, {

@@ -13,6 +13,8 @@ import {
   computeLayout,
   computeAlignmentOffset,
   optimize,
+  optimizeGroup,
+  layoutGroup,
 } from '@tileflow/geometry';
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -82,6 +84,32 @@ ctx.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
           result,
           requestId: request.requestId,
           computeTimeMs: elapsed,
+          candidatesEvaluated,
+        };
+        ctx.postMessage(response);
+        break;
+      }
+
+      case 'optimize-group': {
+        const { members, tileConfig, optimizationConfig, alignment, frame } = request;
+        let layouts;
+        let offset;
+        let candidatesEvaluated;
+        if (request.offset) {
+          offset = request.offset;
+          layouts = layoutGroup(members, tileConfig, optimizationConfig.weights, frame, offset);
+          candidatesEvaluated = 1;
+        } else {
+          const r = optimizeGroup(members, tileConfig, optimizationConfig, alignment, frame);
+          ({ layouts, offset, candidatesEvaluated } = r);
+        }
+
+        const response: WorkerResponse = {
+          type: 'group-result',
+          results: members.map((m, i) => ({ roomId: m.roomId, result: layouts[i] })),
+          offset,
+          requestId: request.requestId,
+          computeTimeMs: performance.now() - start,
           candidatesEvaluated,
         };
         ctx.postMessage(response);
