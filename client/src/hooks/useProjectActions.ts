@@ -78,7 +78,7 @@ export function useProjectActions() {
       const latest = projects[0];
       // Refuse before adopting its id: a later Save would otherwise overwrite
       // a newer plan with whatever is open now.
-      if (latest.plan && (latest.plan as { version?: unknown }).version !== 1) {
+      if (latest.plan && ![1, 2].includes((latest.plan as { version?: unknown }).version as number)) {
         setMessage('This project was saved by a newer version of TileFlow.');
         setTimeout(() => setMessage(''), 3000);
         return;

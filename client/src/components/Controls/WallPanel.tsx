@@ -5,6 +5,7 @@ import { useTileFlowStore } from '../../store/tileFlowStore';
 import { formatDisplayFromMM, groutDisplay, roomDisplay } from '../../utils/measurements';
 import DimensionField from './DimensionField';
 import { LOCATION_LINES } from './PlanPanel';
+import { WallFramingSection } from './WallFraming';
 
 const FUNCTIONS: { value: LayerFunction; label: string }[] = [
   { value: 'finish', label: 'Finish' },
@@ -214,6 +215,8 @@ export default function WallPanel() {
         {lengthRow('Clear, left', lengths.left, 'left', 'Finish face length on the left side — type a tape measurement')}
         {lengthRow('Clear, right', lengths.right, 'right', 'Finish face length on the right side — type a tape measurement')}
       </div>
+
+      <WallFramingSection wallId={wall.id} />
 
       <button
         onClick={() => deletePlanWall(wall.id)}

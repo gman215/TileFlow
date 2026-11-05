@@ -482,7 +482,10 @@ export default function TileCanvas() {
         return;
       }
       // A click on empty canvas (not a wall or handle) clears the wall selection.
-      if (planTool === 'select' && e.target === stageRef.current) selectWall(null);
+      if (planTool === 'select' && e.target === stageRef.current) {
+        selectWall(null);
+        useTileFlowStore.getState().selectNode(null);
+      }
     },
     [drawing, placePoint, plan, planTool, placeRoom, selectWall]
   );

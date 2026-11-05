@@ -1,6 +1,6 @@
 # 009 — Wall Framing: Studs, Openings & Takeoff · Requirements
 
-**Status:** Proposed — awaiting approval
+**Status:** Complete (14/14) — verified 2026-11-05
 **Depends on:** 008-floor-plan (complete and merged)
 **Gemini capability:** none. Constitution I applies with full force: every stud, plate, header and
 sheet count is computed by `packages/geometry`, deterministically and under test.
@@ -49,8 +49,10 @@ engineered or code-checked design, and the UI says so.
 **THE SYSTEM SHALL** decide which wall runs through and frame the junction.
 
 - **AC-3.1** At every L, T and X node, one wall's plates **run through** and the others **butt**.
-  Default: the wall with the deeper core runs through; on a tie, the wall created first. The user
-  can toggle it per node.
+  Default: the wall with the deeper core runs through; on a tie, the longer wall (so a rectangle's
+  long walls run through both ends rather than framing as a pinwheel); then the wall created first.
+  A straight run through a node (two collinear walls, as at a T) always runs through as a pair. The
+  user can toggle it per node.
 - **AC-3.2** Plate length of a butting wall stops at the through wall's core face; the through
   wall's plate runs to the far core face. Both are reported in the takeoff.
 - **AC-3.3** L corner on the through wall: choice of **3-stud corner** (+2 studs) or **California

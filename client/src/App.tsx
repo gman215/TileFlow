@@ -4,6 +4,9 @@ import RoomPanel from './components/Controls/RoomPanel';
 import ShapePanel from './components/Controls/ShapePanel';
 import PlanPanel from './components/Controls/PlanPanel';
 import WallPanel from './components/Controls/WallPanel';
+import { NodePanel } from './components/Controls/WallFraming';
+import TakeoffPanel from './components/Controls/TakeoffPanel';
+import ElevationView from './components/Canvas/ElevationView';
 import TilePanel from './components/Controls/TilePanel';
 import OptimizationPanel from './components/Controls/OptimizationPanel';
 import StatsPanel from './components/Controls/StatsPanel';
@@ -61,6 +64,8 @@ export default function App() {
   const projectName = useTileFlowStore((s) => s.projectName);
   const inPlan = useTileFlowStore((s) => s.plan !== null);
   const wallSelected = useTileFlowStore((s) => s.selectedWallId !== null);
+  const nodeSelected = useTileFlowStore((s) => s.selectedNodeId !== null);
+  const elevationOpen = useTileFlowStore((s) => s.elevationWallId !== null);
   const { saving, projectId, handleSave } = useProjectActions();
 
   return (
@@ -98,6 +103,8 @@ export default function App() {
             <>
               <PlanPanel />
               {wallSelected && <WallPanel />}
+              {nodeSelected && <NodePanel />}
+              <TakeoffPanel />
             </>
           ) : (
             <>
@@ -115,6 +122,7 @@ export default function App() {
           <TileCanvas />
           {/* Floating stats card (bottom-left over the stage) */}
           <StatsPanel />
+          {inPlan && elevationOpen && <ElevationView />}
         </main>
       </div>
     </div>

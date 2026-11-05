@@ -73,6 +73,25 @@ A real-time tile layout optimizer that helps users plan tile installations by de
 - **Plan view** — walls drawn as poché with each layer and a hatched stud core when zoomed in; clear
   or centreline dimension strings
 
+### Framing & Takeoff
+
+- **Studs on layout** — every framed wall is laid out the way a framer marks a plate: end studs,
+  then 16″ or 24″ o.c. (400/600 mm) from the layout-start end so 4 ft sheet joints land on a stud.
+  Framed height, single or double top plate and load-bearing are set per wall; the stud length is
+  derived (97⅛″ under three plates → 92⅝″ precut)
+- **Corners and partitions** — at each junction one wall runs through and the others butt (the
+  longer wall by default, so a room's long walls run through both ends); pick 3-stud or California
+  corners, and partition posts or ladder blocking where a wall tees in
+- **Doors and windows** — rough openings framed with kings, jacks, a header from an editable span
+  table, cripples above and below, and a sill for windows; doors cut the bottom plate. Openings
+  slide along their wall in plan or elevation, and anything that won't fit says why
+- **Doors meet the tile** — a doorway's floor is tiled to the wall centreline from both sides (where
+  the threshold sits), or right through from one room
+- **Wall elevation** — a framing drawing of any wall from either side, with layout marks
+- **Takeoff** — studs, kings, jacks, cripples and headers by cut length; plates packed into stock
+  lengths; drywall, cement board and sheathing by sheet; tile by product — for the whole plan or one
+  room, with **Copy as CSV**. A planning estimate, not an engineered design
+
 ### Measurements
 
 - **Metric / Imperial Toggle** — One switch in the top app bar drives the whole app; each field uses the unit a pro would actually use:

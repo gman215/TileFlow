@@ -23,6 +23,7 @@ import { boundingBoxOf, normalizeShape, pointInPolygon, rectShape } from '../uti
 import { presetAssembly } from './assemblies';
 import { interiorPoint } from './derive';
 import { newId } from './edit';
+import { DEFAULT_HEADER_RULES, IMPERIAL_FRAMING, METRIC_FRAMING } from '../framing/defaults';
 
 export interface LayoutRoom {
   room: Room;
@@ -66,7 +67,8 @@ export interface RoomTileSettings {
 export function planFromRoom(
   room: Room,
   settings: RoomTileSettings,
-  assemblyId = 'interior-2x4'
+  assemblyId = 'interior-2x4',
+  system: 'imperial' | 'metric' = 'imperial'
 ): Plan {
   const shape = room.shape ?? rectShape(room.width, room.height);
   const boundary = shape.boundary;
@@ -108,11 +110,15 @@ export function planFromRoom(
   };
 
   return {
-    version: 1,
+    version: 2,
     nodes,
     walls,
     assemblies: [assembly],
     rooms: [planRoom],
     groups: [],
+    framingDefaults: { ...(system === 'metric' ? METRIC_FRAMING : IMPERIAL_FRAMING) },
+    openings: [],
+    junctions: [],
+    headerRules: DEFAULT_HEADER_RULES.map((r) => ({ ...r })),
   };
 }

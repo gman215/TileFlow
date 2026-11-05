@@ -1,4 +1,6 @@
 import type {
+  DerivedFloors,
+  LayoutResult,
   OptimizationWeights,
   Plan,
   PlanRoom,
@@ -155,4 +157,41 @@ export function openEnds(plan: Plan): Vec2[] {
 export function planBounds(plan: Plan): { minX: number; minY: number; maxX: number; maxY: number } | null {
   if (plan.nodes.length === 0) return null;
   return boundingBoxOf([{ vertices: plan.nodes.map((n) => n.position) }]);
+}
+
+export interface TileTotal {
+  /** Stable key: size and pattern */
+  key: string;
+  tileConfig: TileConfig;
+  tiles: number;
+  cuts: number;
+  area: number;
+  rooms: string[];
+}
+
+/**
+ * Tile per product (size + pattern) across rooms, summed from engine layouts.
+ * Rooms in one pattern group share a product by construction.
+ */
+export function tileTotals(
+  plan: Plan,
+  derived: DerivedFloors | null,
+  roomLayouts: Record<string, LayoutResult>,
+  only?: Set<string>
+): TileTotal[] {
+  const rows = new Map<string, TileTotal>();
+  for (const r of plan.rooms) {
+    if (only && !only.has(r.id)) continue;
+    const layout = roomLayouts[r.id];
+    if (!layout || derived?.rooms.get(r.id)?.status !== 'ok') continue;
+    const { tileConfig } = settingsOf(plan, r);
+    const key = `${tileConfig.width.toFixed(3)}×${tileConfig.height.toFixed(3)}|${tileConfig.pattern}`;
+    const row = rows.get(key) ?? { key, tileConfig, tiles: 0, cuts: 0, area: 0, rooms: [] };
+    row.tiles += layout.fullTileCount + layout.cutTileCount;
+    row.cuts += layout.cutTileCount;
+    row.area += layout.roomArea;
+    row.rooms.push(r.name);
+    rows.set(key, row);
+  }
+  return [...rows.values()];
 }
