@@ -13,6 +13,20 @@ A real-time tile layout optimizer that helps users plan tile installations by de
 
 ---
 
+## Getting started
+
+Open the app and the **Start** card asks what you are tiling:
+
+1. **Tile one room** — type the room size in step 1, pick a tile in step 2, and read *Order to buy*
+   and *Waste* bottom-left. Press **D** to draw an L-shape or any outline.
+2. **Draw a floor plan** — press **R** and drag rectangles; walls (with real studs and drywall)
+   and rooms are made for you. Rooms drawn side by side share their wall.
+3. **Open an example** — a bathroom, an L-shaped kitchen, two rooms with a door, or a small
+   apartment.
+
+The line under the toolbar always says what to do next, and **?** shows every shortcut
+(V select · R room · W wall · C cut-out · D draw shape · F fit · Ctrl+Z undo).
+
 ## Features
 
 ### Patterns & Layout

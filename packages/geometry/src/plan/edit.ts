@@ -170,17 +170,34 @@ function addSegment(
   }
   hits.sort((p, q) => p.t - q.t);
 
+  // Existing corners lying on the new wall (it runs along an existing wall,
+  // or through its ends) become junctions too, so a wall drawn along another
+  // reuses it instead of doubling it.
+  const along: { t: number; nodeId?: string; point?: Vec2; wallId?: string }[] = hits.map((h) => ({ ...h }));
+  for (const n of next.nodes) {
+    if (n.id === start.nodeId || n.id === end.nodeId) continue;
+    const { t, d } = project(n.position, a, b);
+    if (t > 1e-6 && t < 1 - 1e-6 && d < SAME_POINT * 10) along.push({ t, nodeId: n.id });
+  }
+  along.sort((p, q) => p.t - q.t);
+
   const chain = [start.nodeId];
-  for (const h of hits) {
-    const split = splitWallAt(next, h.wallId, h.point);
+  for (const h of along) {
+    if (h.nodeId) {
+      chain.push(h.nodeId);
+      continue;
+    }
+    const split = splitWallAt(next, h.wallId!, h.point!);
     next = split.plan;
     chain.push(split.nodeId);
   }
   chain.push(end.nodeId);
 
   next = { ...next, walls: [...next.walls] };
+  const joined = (p: string, q: string) =>
+    next.walls.some((w) => (w.a === p && w.b === q) || (w.a === q && w.b === p));
   for (let i = 0; i + 1 < chain.length; i++) {
-    if (chain[i] === chain[i + 1]) continue;
+    if (chain[i] === chain[i + 1] || joined(chain[i], chain[i + 1])) continue;
     next.walls.push({
       id: newId('w'),
       a: chain[i],

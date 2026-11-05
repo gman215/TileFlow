@@ -6,6 +6,7 @@ import { tileTotals } from '../../store/planHelpers';
 import { formatDisplayFromMM, groutDisplay, roomDisplay, tileDisplay } from '../../utils/measurements';
 import { ORDER_BUFFER } from '../../api/ai';
 import DimensionField from './DimensionField';
+import InfoTip from './InfoTip';
 
 const MM2_PER_M2 = 1_000_000;
 const MM2_PER_FT2 = 92_903.04;
@@ -45,10 +46,6 @@ export default function PlanPanel() {
   const startDraw = useTileFlowStore((s) => s.startDraw);
   const cancelDraft = useTileFlowStore((s) => s.cancelDraft);
   const deleteHole = useTileFlowStore((s) => s.deleteHole);
-  const undoShape = useTileFlowStore((s) => s.undoShape);
-  const redoShape = useTileFlowStore((s) => s.redoShape);
-  const canUndo = useTileFlowStore((s) => s.shapePast.length > 0);
-  const canRedo = useTileFlowStore((s) => s.shapeFuture.length > 0);
 
   const [editingName, setEditingName] = useState<string | null>(null);
 
@@ -109,31 +106,16 @@ export default function PlanPanel() {
 
   return (
     <div className="px-4 py-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="section-header">Floor plan</h3>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={undoShape}
-            disabled={!canUndo}
-            title="Undo"
-            className="px-1.5 py-0.5 text-[12px] text-ink-muted hover:text-ink disabled:opacity-30"
-          >
-            ↺
-          </button>
-          <button
-            onClick={redoShape}
-            disabled={!canRedo}
-            title="Redo"
-            className="px-1.5 py-0.5 text-[12px] text-ink-muted hover:text-ink disabled:opacity-30"
-          >
-            ↻
-          </button>
-        </div>
-      </div>
+      <h3 className="section-header">
+        <span className="step">1</span>Floor plan
+      </h3>
 
       {/* New walls */}
       <div className="space-y-1.5">
-        <div className="text-[10px] text-ink-muted">New walls</div>
+        <div className="text-[10px] text-ink-muted">
+          New walls
+          <InfoTip text="The build-up new walls get, and which line of the wall your clicks trace: its middle, the stud face, or the drywall face. Change any wall later by selecting it." />
+        </div>
         <select
           className="input-field py-1 text-[12px]"
           value={wallStyle.assemblyId}
@@ -163,7 +145,10 @@ export default function PlanPanel() {
       <div className="space-y-1">
         <div className="text-[10px] text-ink-muted">Rooms</div>
         {plan.rooms.length === 0 && (
-          <p className="text-[11px] text-ink-muted">Use the Room tool to place a room inside closed walls.</p>
+          <p className="rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
+            No rooms yet. Press <b>R</b> (Room) and drag a rectangle on the canvas — the walls and the
+            room are made for you.
+          </p>
         )}
         {plan.rooms.map((r) => {
           const d = derived.rooms.get(r.id);
@@ -228,13 +213,13 @@ export default function PlanPanel() {
         <div className="space-y-2 rounded-lg border border-hairline px-2.5 py-2">
           <div className="text-[11px] font-medium text-ink">{active.name}</div>
           <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px]">
-            <span className="text-ink-muted" title="Finish face to finish face">Clear</span>
+            <span className="text-ink-muted" title="Drywall face to drywall face">Inside</span>
             <span className="font-mono text-ink">
               {area(polygonArea(activeDerived.finishBoundary!))} · perim. {fmt(polygonPerimeter(activeDerived.finishBoundary!))}
             </span>
             {activeDerived.coreBoundary && (
               <>
-                <span className="text-ink-muted" title="Stud face to stud face">Framing</span>
+                <span className="text-ink-muted" title="Stud face to stud face">Stud to stud</span>
                 <span className="font-mono text-ink">{area(polygonArea(activeDerived.coreBoundary))}</span>
               </>
             )}
@@ -255,7 +240,10 @@ export default function PlanPanel() {
           </div>
 
           <label className="flex items-center gap-2 text-[11px] text-ink-muted" title="Movement joint left at the walls, hidden under the baseboard">
-            <span className="shrink-0">Expansion gap</span>
+            <span className="shrink-0">
+              Expansion gap
+              <InfoTip text="The gap left between the tile and the walls so the floor can move. It hides under the baseboard; ¼″ (6 mm) is typical." />
+            </span>
             <DimensionField
               label=""
               mm={active.expansionGap}
@@ -268,7 +256,10 @@ export default function PlanPanel() {
           </label>
 
           <label className="flex items-center gap-2 text-[11px] text-ink-muted">
-            <span className="shrink-0">Square to</span>
+            <span className="shrink-0">
+              Square to
+              <InfoTip text="Run the tile pattern parallel to this wall — usually the longest or most visible one." />
+            </span>
             <select
               className="input-field flex-1 py-0.5 text-[11px]"
               value={referenceWallId ?? ''}

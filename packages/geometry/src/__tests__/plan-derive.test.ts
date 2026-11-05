@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveFloors } from '../plan/derive';
+import { deriveFloors, enclosedRegions } from '../plan/derive';
 import { polygonArea } from '../utils/math';
 import { rect12x10, extents, addNode, addWall, room, IN, FT } from './plan-fixtures';
 
@@ -111,5 +111,16 @@ describe('deriveFloors — a wall drawn through a room’s placement point', () 
     // And it took the side the new room did not.
     const xs = floors.get('old')!.finishBoundary!.vertices.map((v) => v.x);
     expect(Math.max(...xs)).toBeLessThan(6 * FT);
+  });
+});
+
+describe('enclosedRegions', () => {
+  it('finds both halves of a partitioned rectangle, each with a point inside it', () => {
+    const { plan } = twoRooms();
+    const regions = enclosedRegions(plan);
+    expect(regions).toHaveLength(2);
+    const xs = regions.map((r) => r.point.x).sort((a, b) => a - b);
+    expect(xs[0]).toBeLessThan(6 * FT);
+    expect(xs[1]).toBeGreaterThan(6 * FT);
   });
 });

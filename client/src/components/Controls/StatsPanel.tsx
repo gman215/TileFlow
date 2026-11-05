@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import { ORDER_BUFFER } from '../../api/ai';
 
@@ -13,7 +13,28 @@ const CARD_STYLE: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,.08)',
 };
 
+const COLLAPSE_KEY = 'tileflow.statsCollapsed';
+
+/** Per-browser preference; storage can be unavailable (private mode), so never required. */
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export default function StatsPanel() {
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
+    } catch {
+      /* preference only */
+    }
+  };
   const layout = useTileFlowStore((s) => s.layout);
   const system = useTileFlowStore((s) => s.system);
   const isComputing = useTileFlowStore((s) => s.isComputing);
@@ -50,11 +71,38 @@ export default function StatsPanel() {
     { label: 'Compute', value: `${computeTimeMs.toFixed(1)} ms` },
   ];
 
+  if (collapsed) {
+    return (
+      <button
+        onClick={toggle}
+        title="Show the full stats"
+        className="absolute bottom-3 left-3 z-10 flex items-center gap-3 rounded-full px-3.5 py-1.5 text-[12px] text-white"
+        style={CARD_STYLE}
+      >
+        <span>
+          <span className="font-mono font-medium">{buyCount}</span> to buy
+        </span>
+        <span style={{ color: wasteColor }}>
+          <span className="font-mono">{waste.toFixed(1)}%</span> waste
+        </span>
+        <span className="text-white/50">▴</span>
+      </button>
+    );
+  }
+
   return (
     <div
       className="absolute bottom-3 left-3 z-10 rounded-xl p-4 text-white"
       style={CARD_STYLE}
     >
+      <button
+        onClick={toggle}
+        title="Shrink to one line"
+        aria-label="Collapse stats"
+        className="absolute right-2 top-2 rounded px-1.5 text-[12px] text-white/45 hover:text-white"
+      >
+        ▾
+      </button>
       {/* Hero stats */}
       <div className="flex gap-8">
         <div>
@@ -72,7 +120,9 @@ export default function StatsPanel() {
           >
             {waste.toFixed(1)}%
           </div>
-          <div className="mt-1.5 text-[11px] text-white/55">Waste %</div>
+          <div className="mt-1.5 text-[11px] text-white/55" title="Tile you pay for but cut away, as a share of the floor">
+            Waste %
+          </div>
         </div>
       </div>
 

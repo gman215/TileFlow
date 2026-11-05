@@ -17,7 +17,9 @@ export default function RoomPanel() {
   return (
     <div className="px-4 py-4 space-y-2.5">
       <div className="flex items-center justify-between">
-        <h3 className="section-header">Room</h3>
+        <h3 className="section-header">
+          <span className="step">1</span>Room
+        </h3>
         {drawn && (
           <span className="text-[10px] text-ink-muted" title="Width and depth follow the drawn outline">
             outline · extents

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import TileCanvas from './components/Canvas/TileCanvas';
 import RoomPanel from './components/Controls/RoomPanel';
 import ShapePanel from './components/Controls/ShapePanel';
@@ -7,6 +7,7 @@ import WallPanel from './components/Controls/WallPanel';
 import { NodePanel } from './components/Controls/WallFraming';
 import TakeoffPanel from './components/Controls/TakeoffPanel';
 import ElevationView from './components/Canvas/ElevationView';
+import StartCard from './components/StartCard';
 import TilePanel from './components/Controls/TilePanel';
 import OptimizationPanel from './components/Controls/OptimizationPanel';
 import StatsPanel from './components/Controls/StatsPanel';
@@ -66,6 +67,14 @@ export default function App() {
   const wallSelected = useTileFlowStore((s) => s.selectedWallId !== null);
   const nodeSelected = useTileFlowStore((s) => s.selectedNodeId !== null);
   const elevationOpen = useTileFlowStore((s) => s.elevationWallId !== null);
+  const setHelpOpen = useTileFlowStore((s) => s.setHelpOpen);
+  const selectionKey = useTileFlowStore((s) => s.selectedWallId ?? s.selectedNodeId);
+
+  // A new selection shows at the top of the sidebar; bring it into view.
+  const asideRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (selectionKey) asideRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [selectionKey]);
   const { saving, projectId, handleSave } = useProjectActions();
 
   return (
@@ -84,6 +93,14 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setHelpOpen(true)}
+            title="How it works and keyboard shortcuts (?)"
+            aria-label="Help"
+            className="h-8 w-8 rounded-full border border-hairline text-[13px] font-semibold text-ink-secondary hover:bg-[#F0EFEB]"
+          >
+            ?
+          </button>
           <UnitToggle />
           <button
             onClick={handleSave}
@@ -98,13 +115,13 @@ export default function App() {
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar — grouped sections split by hairline dividers */}
-        <aside className="w-[312px] flex-shrink-0 overflow-y-auto bg-white border-r border-hairline divide-y divide-divider">
+        <aside ref={asideRef} className="w-[312px] flex-shrink-0 overflow-y-auto bg-white border-r border-hairline divide-y divide-divider">
+          {/* What is selected comes first, then the steps in order (010 R6). */}
           {inPlan ? (
             <>
-              <PlanPanel />
               {wallSelected && <WallPanel />}
               {nodeSelected && <NodePanel />}
-              <TakeoffPanel />
+              <PlanPanel />
             </>
           ) : (
             <>
@@ -114,6 +131,7 @@ export default function App() {
           )}
           <TilePanel />
           <OptimizationPanel />
+          {inPlan && <TakeoffPanel />}
           <ProjectPanel />
         </aside>
 
@@ -123,6 +141,7 @@ export default function App() {
           {/* Floating stats card (bottom-left over the stage) */}
           <StatsPanel />
           {inPlan && elevationOpen && <ElevationView />}
+          <StartCard />
         </main>
       </div>
     </div>

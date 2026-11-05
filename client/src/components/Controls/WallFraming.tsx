@@ -4,6 +4,7 @@ import { frameWalls, resolveJunctions, MM_PER_INCH } from '@tileflow/geometry';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import { formatDisplayFromMM, roomDisplay } from '../../utils/measurements';
 import DimensionField from './DimensionField';
+import InfoTip from './InfoTip';
 
 const SPACINGS_IMPERIAL = [16, 24].map((n) => ({ label: `${n}″ o.c.`, mm: n * MM_PER_INCH }));
 const SPACINGS_METRIC = [400, 600].map((n) => ({ label: `${n} mm o.c.`, mm: n }));
@@ -132,6 +133,7 @@ export function WallFramingSection({ wallId }: { wallId: string }) {
             onChange={(e) => setWallFraming(wallId, { loadBearing: e.target.checked })}
           />
           Load-bearing
+          <InfoTip text="Carries the floor or roof above. Bearing walls get doubled, sized headers over doors and windows; others get a flat 2×4." />
         </label>
       </div>
 
@@ -235,9 +237,12 @@ export function NodePanel() {
   const name = (id: string) => `W${plan.walls.findIndex((w) => w.id === id) + 1}`;
 
   return (
-    <div className="px-4 py-4 space-y-2">
+    <div className="px-4 py-4 space-y-2 border-l-4 border-amber-400 bg-amber-50/40">
       <div className="flex items-center justify-between">
-        <h3 className="section-header">Junction</h3>
+        <h3 className="section-header">
+          <span className="mr-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600">Selected</span>
+          Corner
+        </h3>
         <button onClick={() => selectNode(null)} className="text-[12px] text-ink-muted hover:text-ink">
           ×
         </button>

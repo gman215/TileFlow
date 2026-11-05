@@ -51,6 +51,43 @@ describe('addWallChain', () => {
   });
 });
 
+describe('walls drawn along existing walls', () => {
+  it('a room drawn against another reuses the shared wall instead of doubling it', () => {
+    let plan = addWallChain(emptyPlan(), rectPts, style, { closed: true });
+    plan = addWallChain(
+      plan,
+      [{ x: 12 * FT, y: 0 }, { x: 18 * FT, y: 0 }, { x: 18 * FT, y: 10 * FT }, { x: 12 * FT, y: 10 * FT }],
+      style,
+      { closed: true }
+    );
+    expect(validatePlan(plan)).toEqual([]);
+    expect(plan.walls).toHaveLength(7);
+  });
+
+  it('a shorter room against a longer wall splits it and shares the part it touches', () => {
+    let plan = addWallChain(emptyPlan(), rectPts, style, { closed: true });
+    plan = addWallChain(
+      plan,
+      [{ x: 12 * FT, y: 2 * FT }, { x: 16 * FT, y: 2 * FT }, { x: 16 * FT, y: 6 * FT }, { x: 12 * FT, y: 6 * FT }],
+      style,
+      { closed: true }
+    );
+    expect(validatePlan(plan)).toEqual([]);
+  });
+
+  it('a wall overlapping past the end of another shares the overlap and extends', () => {
+    let plan = addWallChain(emptyPlan(), [{ x: 0, y: 0 }, { x: 3000, y: 0 }], style);
+    plan = addWallChain(plan, [{ x: 1000, y: 0 }, { x: 5000, y: 0 }], style);
+    expect(validatePlan(plan)).toEqual([]);
+    const total = plan.walls.reduce((s, w) => {
+      const a = plan.nodes.find((n) => n.id === w.a)!.position;
+      const b = plan.nodes.find((n) => n.id === w.b)!.position;
+      return s + Math.hypot(b.x - a.x, b.y - a.y);
+    }, 0);
+    expect(total).toBeCloseTo(5000, 6);
+  });
+});
+
 describe('moving', () => {
   it('moving a node drags every wall that meets there', () => {
     const plan = rect12x10();

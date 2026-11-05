@@ -48,10 +48,13 @@ import {
   pointInPolygon,
   upgradePlan,
   openingProblem,
+  enclosedRegions,
+  emptyPlan,
   wallLength,
   MM_PER_INCH,
 } from '@tileflow/geometry';
 import type { MeasurementSystem } from '../utils/measurements';
+import { buildTemplate, type TemplateId } from './templates';
 import {
   roomById,
   settingsOf,
@@ -227,8 +230,19 @@ export interface TileFlowState {
   setWallStyle: (style: Partial<TileFlowState['wallStyle']>) => void;
   setDimensionMode: (m: 'clear' | 'centerline') => void;
   clearPlanNotice: () => void;
-  /** Commit a chain of walls drawn on the canvas */
+  /** Commit a chain of walls drawn on the canvas; newly closed spaces get rooms */
   addWalls: (points: Vec2[], closed: boolean, toleranceMM: number) => boolean;
+  /** Draw a rectangular room of walls between two corners (010 R3) */
+  addRoomRect: (a: Vec2, b: Vec2, toleranceMM: number) => boolean;
+  /** Start a floor plan with nothing drawn, Room tool ready */
+  startEmptyPlan: () => void;
+  /** Open one of the Start card's examples */
+  loadTemplate: (id: TemplateId) => void;
+  /** Bumped whenever a whole new project is put on screen, so the view refits */
+  viewEpoch: number;
+  /** Start card / help overlay */
+  helpOpen: boolean;
+  setHelpOpen: (open: boolean) => void;
   /** Place a room at a point; false (with a notice) when nothing encloses it */
   placeRoom: (point: Vec2) => boolean;
   movePlanNode: (id: string, to: Vec2) => void;
@@ -387,6 +401,51 @@ export const useTileFlowStore = create<TileFlowState>()(
         ...activeView(plan, derived, activeRoomId, s.roomLayouts, s),
       });
       return true;
+    };
+
+    /**
+     * Give every enclosed space that has no room a room of its own (010 R4).
+     * Used after walls are added — never after a delete, where a merged space
+     * is the user's call (the rooms are flagged redundant instead).
+     */
+    const withAutoRooms = (plan: Plan): { plan: Plan; added: string[] } => {
+      const derived = deriveFloors(plan);
+      const taken = (p: Vec2) =>
+        plan.rooms.some((r) => {
+          const d = derived.rooms.get(r.id);
+          return Boolean(d?.finishBoundary && pointInPolygon(p, d.finishBoundary));
+        });
+      const template = roomById(plan, get().activeRoomId) ?? plan.rooms[plan.rooms.length - 1];
+      const s = get();
+      const settings = template
+        ? settingsOf(plan, template)
+        : { tileConfig: s.tileConfig, alignment: s.alignment, weights: s.optimizationConfig.weights };
+      let next = plan;
+      const added: string[] = [];
+      for (const region of enclosedRegions(plan)) {
+        if (taken(region.point)) continue;
+        // A room whose seed sits in this region (e.g. not enclosed a moment ago) already owns it.
+        if (plan.rooms.some((r) => pointInPolygon(r.seed, region.ring))) continue;
+        const id = newId('r');
+        added.push(id);
+        next = {
+          ...next,
+          rooms: [
+            ...next.rooms,
+            {
+              id,
+              name: nextRoomName(next),
+              seed: region.point,
+              holes: [],
+              expansionGap: template?.expansionGap ?? 0,
+              ...settings,
+              tileConfig: { ...settings.tileConfig },
+              weights: { ...settings.weights },
+            },
+          ],
+        };
+      }
+      return { plan: next, added };
     };
 
     /** Put an undo entry back: re-derive a plan, or return to the single room. */
@@ -807,7 +866,13 @@ export const useTileFlowStore = create<TileFlowState>()(
       // A v1 plan (saved before framing existed) is brought up to date here.
       const loaded = upgradePlan(plan, get().system);
       if (!loaded) return false;
-      set({ activeRoomId: loaded.rooms[0]?.id ?? null, roomLayouts: {}, selectedWallId: null, draft: null });
+      set({
+        activeRoomId: loaded.rooms[0]?.id ?? null,
+        roomLayouts: {},
+        selectedWallId: null,
+        draft: null,
+        viewEpoch: get().viewEpoch + 1,
+      });
       return commitPlan(loaded);
     },
 
@@ -838,9 +903,80 @@ export const useTileFlowStore = create<TileFlowState>()(
     addWalls: (points, closed, toleranceMM) => {
       const { plan, wallStyle } = get();
       if (!plan || points.length < 2) return false;
-      const next = addWallChain(plan, points, wallStyle, { closed, tolerance: toleranceMM });
-      return commitPlan(next);
+      const drawn = addWallChain(plan, points, wallStyle, { closed, tolerance: toleranceMM });
+      const { plan: next, added } = withAutoRooms(drawn);
+      const ok = commitPlan(next);
+      if (ok && added.length > 0) get().setActiveRoom(added[added.length - 1]);
+      return ok;
     },
+
+    addRoomRect: (a, b, toleranceMM) => {
+      if (Math.abs(b.x - a.x) < 100 || Math.abs(b.y - a.y) < 100) return false;
+      const corners = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }];
+      return get().addWalls(corners, true, toleranceMM);
+    },
+
+    startEmptyPlan: () => {
+      const s = get();
+      pushHistory(s.room);
+      set({
+        activeRoomId: null,
+        roomLayouts: {},
+        selectedWallId: null,
+        selectedNodeId: null,
+        draft: null,
+        editMode: false,
+        planTool: 'room',
+        wallStyle: { assemblyId: s.system === 'metric' ? 'interior-89' : 'interior-2x4', locationLine: 'centerline' },
+        viewEpoch: s.viewEpoch + 1,
+      });
+      commitPlan(emptyPlan(s.system), { history: false });
+    },
+
+    loadTemplate: (id) => {
+      const s = get();
+      const result = buildTemplate(id, s.system, {
+        tileConfig: s.tileConfig,
+        alignment: s.alignment,
+        weights: s.optimizationConfig.weights,
+      });
+      pushHistory(s.room);
+      if (result.kind === 'plan') {
+        set({
+          activeRoomId: result.activeRoomId,
+          roomLayouts: {},
+          selectedWallId: null,
+          selectedNodeId: null,
+          planTool: 'select',
+          draft: null,
+          wallStyle: { assemblyId: s.system === 'metric' ? 'interior-89' : 'interior-2x4', locationLine: 'centerline' },
+          viewEpoch: s.viewEpoch + 1,
+        });
+        commitPlan(result.plan, { history: false });
+        return;
+      }
+      // A single room: leave any plan, then size it (and shape it, for the L).
+      set({
+        plan: null,
+        derived: null,
+        activeRoomId: null,
+        roomLayouts: {},
+        roomOrigins: {},
+        selectedWallId: null,
+        selectedNodeId: null,
+        draft: null,
+        planTool: 'select',
+        tileConfig: { ...s.tileConfig, ...result.tile },
+        room: result.shape
+          ? roomFromShape(result.shape)
+          : { width: result.width, height: result.height },
+        viewEpoch: s.viewEpoch + 1,
+      });
+    },
+
+    viewEpoch: 0,
+    helpOpen: false,
+    setHelpOpen: (open) => set({ helpOpen: open }),
 
     placeRoom: (point) => {
       const { plan, derived, activeRoomId } = get();

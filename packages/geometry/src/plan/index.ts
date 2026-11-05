@@ -16,9 +16,9 @@ export {
   type WallSolid,
   type WallGeometry,
 } from './walls';
-export { deriveFloors, regionAt, interiorPoint, type DerivedFloors } from './derive';
+export { deriveFloors, regionAt, interiorPoint, enclosedRegions, type DerivedFloors } from './derive';
 export * from './edit';
-export { toLayoutRoom, planFromRoom, type LayoutRoom, type RoomTileSettings } from './adapter';
+export { toLayoutRoom, planFromRoom, emptyPlan, type LayoutRoom, type RoomTileSettings } from './adapter';
 export {
   groupFrame,
   localFrame,
