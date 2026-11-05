@@ -165,6 +165,8 @@ export interface PlanWall {
   locationLine: LocationLine;
   /** Swap left/right without moving the location line */
   flipped?: boolean;
+  /** Framing overrides for this wall; unset fields follow `Plan.framingDefaults` (009) */
+  framing?: Partial<WallFraming>;
 }
 
 export interface PlanRoom {
@@ -203,12 +205,122 @@ export interface PatternGroup {
 }
 
 export interface Plan {
-  version: 1;
+  /** 2 since 009 added framing; `upgradePlan` brings a v1 plan up */
+  version: 2;
   nodes: PlanNode[];
   walls: PlanWall[];
   assemblies: WallAssembly[];
   rooms: PlanRoom[];
   groups: PatternGroup[];
+  // ── 009: framing ──
+  framingDefaults: WallFraming;
+  openings: Opening[];
+  junctions: JunctionChoice[];
+  headerRules: HeaderRule[];
+}
+
+// ─── Wall framing (009) ───────────────────────────────────────────────────────
+
+export interface WallFraming {
+  /** Bottom of bottom plate to top of top plate, mm */
+  framedHeight: number;
+  /** Stud spacing on centre, mm */
+  spacing: number;
+  /** Which end the layout is measured from */
+  layoutFrom: 'a' | 'b';
+  topPlates: 1 | 2;
+  /**
+   * Bearing walls get sized headers. Unset on a wall, it defaults from the
+   * build-up: anything with sheathing (an exterior wall) is taken as bearing.
+   */
+  loadBearing?: boolean;
+}
+
+export type OpeningKind = 'door' | 'window' | 'cased-opening';
+
+export interface Opening {
+  id: string;
+  wallId: string;
+  kind: OpeningKind;
+  /** mm from wall end a to the opening's centre, along the location line */
+  center: number;
+  roughWidth: number;
+  /** Door: floor to underside of header. Window: floor to top of the rough opening */
+  roughHeight: number;
+  /** Window only: floor to the bottom of the rough opening */
+  sillHeight?: number;
+  /**
+   * Doors and cased openings: where the floors on either side stop.
+   * `centerline` (default): each room's tile runs to the middle of the wall.
+   * `through`: the room on `side` runs through to the far face; the other
+   * stops at its own face. `room-side`: the room on `side` stops at its face
+   * and the other runs through.
+   */
+  floorTransition?: 'centerline' | 'through' | 'room-side';
+  side?: 'left' | 'right';
+}
+
+export interface JunctionChoice {
+  nodeId: string;
+  /** The wall whose plates run through (its collinear partner, if any, too) */
+  throughWallId?: string;
+  corner?: 'three-stud' | 'california';
+  partition?: 'post' | 'ladder';
+}
+
+export interface HeaderRule {
+  loadBearing: boolean;
+  /** Longest header (rough opening + both jacks) this rule covers, mm */
+  maxSpan: number;
+  /** "2×6", "2×4 flat" */
+  member: string;
+  plies: number;
+  /** Vertical depth, mm — what the cripples above start from */
+  depth: number;
+}
+
+export type MemberKind =
+  | 'stud'
+  | 'king'
+  | 'jack'
+  | 'cripple'
+  | 'header'
+  | 'sill'
+  | 'bottom-plate'
+  | 'top-plate'
+  | 'block'
+  | 'corner'
+  | 'partition';
+
+export interface FramingMember {
+  kind: MemberKind;
+  /** Elevation rectangle, wall-local mm: x along the plate from its start, y up from the floor */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Cut length of the piece */
+  length: number;
+  /** Header only: what it is ("2×8 ×2") */
+  label?: string;
+}
+
+export interface FramingIssue {
+  kind: 'opening-overlap' | 'opening-outside' | 'needs-engineered-header';
+  openingId?: string;
+  message: string;
+}
+
+export interface FramedWall {
+  wallId: string;
+  /** Where the plate starts, mm along the location line from end a (may be < 0) */
+  plateStart: number;
+  plateLength: number;
+  /** The framing actually used, after defaults */
+  framing: Required<WallFraming>;
+  studLength: number;
+  members: FramingMember[];
+  issues: FramingIssue[];
 }
 
 export type RoomStatus = 'ok' | 'not-enclosed' | 'redundant';

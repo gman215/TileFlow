@@ -13,7 +13,7 @@ import type { Geom, MultiPolygon } from 'polygon-clipping';
 import { DerivedRoom, Plan, PlanRoom, Polygon, Vec2 } from '../types';
 import { polygonArea, pointInPolygon, boundingBox, polygonCentroid } from '../utils/math';
 import { polygonToRing, ringToPolygon } from '../clipping';
-import { FaceLevel, wallGeometry, WallGeometry, clean } from './walls';
+import { FaceLevel, wallGeometry, WallGeometry, clean, faceOffsets, nodeMap, assemblyMap } from './walls';
 
 /** A closed region of floor, bounded by wall faces at one level. */
 interface Region {
@@ -192,6 +192,65 @@ function edgeWallsFor(ring: Polygon, geometry: WallGeometry): (string | null)[] 
   });
 }
 
+/**
+ * Doorways: the strips of floor a door adds to a room (009 R5). The tile runs
+ * from the room's own face into the opening — to the wall's centre by
+ * default, where a threshold sits, or right through, or not at all — so a
+ * door between two rooms is tiled from both sides with nothing missing and
+ * nothing counted twice. Windows never change a floor.
+ */
+function doorwayStrips(plan: Plan, probe: Vec2, wallIds: Set<string>, gap: number): Polygon[] {
+  const nodes = nodeMap(plan);
+  const assemblies = assemblyMap(plan);
+  const strips: Polygon[] = [];
+  for (const o of plan.openings ?? []) {
+    if (o.kind === 'window' || !wallIds.has(o.wallId)) continue;
+    const wall = plan.walls.find((w) => w.id === o.wallId);
+    const assembly = wall && assemblies.get(wall.assemblyId);
+    const a = wall && nodes.get(wall.a)?.position;
+    const b = wall && nodes.get(wall.b)?.position;
+    if (!wall || !assembly || !a || !b) continue;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len < 1e-9) continue;
+    const u = { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+    const n = { x: -u.y, y: u.x };
+    const faces = faceOffsets(wall, assembly, 'finish');
+    const side: 'left' | 'right' = (probe.x - a.x) * n.x + (probe.y - a.y) * n.y > 0 ? 'right' : 'left';
+
+    const transition = o.floorTransition ?? 'centerline';
+    const far = side === 'right' ? faces.left : faces.right;
+    const target =
+      transition === 'centerline'
+        ? (faces.left + faces.right) / 2
+        : (transition === 'through') === (o.side === side)
+        ? far
+        : null;
+    if (target == null) continue;
+
+    // Start a hair inside the room so the strip bridges the expansion gap.
+    const start = side === 'right' ? faces.right + gap + 1 : faces.left - gap - 1;
+    const s0 = o.center - o.roughWidth / 2;
+    const s1 = o.center + o.roughWidth / 2;
+    const at = (s: number, off: number): Vec2 => ({
+      x: clean(a.x + u.x * s + n.x * off),
+      y: clean(a.y + u.y * s + n.y * off),
+    });
+    strips.push({ vertices: [at(s0, start), at(s1, start), at(s1, target), at(s0, target)] });
+  }
+  return strips;
+}
+
+/** The room's tile ring with its doorways added. */
+function withDoorways(ring: Polygon, strips: Polygon[], probe: Vec2): Polygon {
+  if (strips.length === 0) return ring;
+  const union: MultiPolygon = polygonClipping.union(
+    [polygonToRing(ring)],
+    ...strips.map((s) => [polygonToRing(s)] as Geom)
+  );
+  const outer = union.map((p) => ringToPolygon(p[0]));
+  return simplify(outer.find((p) => pointInPolygon(probe, p)) ?? outer[0] ?? ring);
+}
+
 export interface DerivedFloors {
   rooms: Map<string, DerivedRoom>;
   /** Placement points a wall has reached, and where to move them */
@@ -262,14 +321,20 @@ export function deriveFloors(plan: Plan): DerivedFloors {
         ...room.holes.map((h) => ({ vertices: h.vertices.map((p) => ({ ...p })) })),
       ];
 
+      const bounding = tileRegion ? edgeWallsFor(tileRegion.ring, tile.geometry) : [];
+      const strips = tileRegion
+        ? doorwayStrips(plan, probe, new Set(bounding.filter((id): id is string => id !== null)), Math.max(0, room.expansionGap))
+        : [];
+      const tileRing = tileRegion ? withDoorways(tileRegion.ring, strips, probe) : undefined;
+
       rooms.set(room.id, {
         roomId: room.id,
         status,
         finishBoundary: region.ring,
         coreBoundary: coreRegion?.ring,
-        tileBoundary: tileRegion?.ring,
+        tileBoundary: tileRing,
         holes,
-        edgeWalls: tileRegion ? edgeWallsFor(tileRegion.ring, tile.geometry) : [],
+        edgeWalls: tileRing ? (strips.length > 0 ? edgeWallsFor(tileRing, tile.geometry) : bounding) : [],
         labelPoint: probe,
       });
       // The placement point stays where the user put it, as in Revit. It

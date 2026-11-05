@@ -1,6 +1,7 @@
 import type { LocationLine, Plan, PlanRoom, Vec2 } from '../types';
 import { MM_PER_INCH, MM_PER_FOOT } from '../types';
 import { ASSEMBLY_PRESETS, cloneAssembly } from '../plan/assemblies';
+import { DEFAULT_HEADER_RULES, IMPERIAL_FRAMING } from '../framing/defaults';
 
 export const IN = MM_PER_INCH;
 export const FT = MM_PER_FOOT;
@@ -8,12 +9,16 @@ export const FT = MM_PER_FOOT;
 /** A plan with every preset available and nothing drawn. */
 export function emptyPlan(): Plan {
   return {
-    version: 1,
+    version: 2,
     nodes: [],
     walls: [],
     assemblies: ASSEMBLY_PRESETS.map(cloneAssembly),
     rooms: [],
     groups: [],
+    framingDefaults: { ...IMPERIAL_FRAMING },
+    openings: [],
+    junctions: [],
+    headerRules: DEFAULT_HEADER_RULES.map((r) => ({ ...r })),
   };
 }
 

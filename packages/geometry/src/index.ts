@@ -57,3 +57,4 @@ export {
 
 // Floor plans (walls, assemblies, derived rooms, pattern groups)
 export * from './plan';
+export * from './framing';

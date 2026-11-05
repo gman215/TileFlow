@@ -14,6 +14,10 @@ import type {
   DerivedFloors,
   LocationLine,
   WallAssembly,
+  Opening,
+  OpeningKind,
+  WallFraming,
+  JunctionChoice,
 } from '@tileflow/geometry';
 import {
   DEFAULT_OPTIMIZATION_CONFIG,
@@ -42,6 +46,10 @@ import {
   cloneAssembly,
   isValidAssembly,
   pointInPolygon,
+  upgradePlan,
+  openingProblem,
+  wallLength,
+  MM_PER_INCH,
 } from '@tileflow/geometry';
 import type { MeasurementSystem } from '../utils/measurements';
 import {
@@ -192,6 +200,21 @@ export interface TileFlowState {
   openEndHighlights: Vec2[];
   /** Last layout per room id */
   roomLayouts: Record<string, LayoutResult>;
+  // ── Framing (009) ──
+  selectedNodeId: string | null;
+  selectNode: (id: string | null) => void;
+  /** Wall shown in the framing elevation, or null when it is closed */
+  elevationWallId: string | null;
+  setElevationWall: (id: string | null) => void;
+  /** Add a door or window centred on a wall, at standard rough-opening sizes */
+  addOpening: (wallId: string, kind: OpeningKind) => boolean;
+  /** Change an opening; refused (with a notice) if it would not fit */
+  updateOpening: (id: string, patch: Partial<Opening>, opts?: { quiet?: boolean }) => boolean;
+  deleteOpening: (id: string) => void;
+  /** Override framing on one wall; `undefined` fields go back to the defaults */
+  setWallFraming: (wallId: string, patch: Partial<WallFraming>) => void;
+  setFramingDefaults: (patch: Partial<WallFraming>) => void;
+  setJunction: (nodeId: string, patch: Partial<Omit<JunctionChoice, 'nodeId'>>) => void;
   /** Plan-space shift of each room's layout coordinates */
   roomOrigins: Record<string, Vec2>;
 
@@ -757,7 +780,8 @@ export const useTileFlowStore = create<TileFlowState>()(
       const plan = planFromRoom(
         s.room,
         { tileConfig: s.tileConfig, alignment: s.alignment, weights: s.optimizationConfig.weights },
-        assemblyId
+        assemblyId,
+        s.system
       );
       // Every preset is available to the plan, not just the one it started with.
       for (const id of [
@@ -780,8 +804,9 @@ export const useTileFlowStore = create<TileFlowState>()(
     },
 
     loadPlan: (plan) => {
-      if ((plan as { version?: unknown }).version !== 1) return false;
-      const loaded: Plan = { ...plan, groups: plan.groups ?? [] };
+      // A v1 plan (saved before framing existed) is brought up to date here.
+      const loaded = upgradePlan(plan, get().system);
+      if (!loaded) return false;
       set({ activeRoomId: loaded.rooms[0]?.id ?? null, roomLayouts: {}, selectedWallId: null, draft: null });
       return commitPlan(loaded);
     },
@@ -805,7 +830,7 @@ export const useTileFlowStore = create<TileFlowState>()(
       });
     },
 
-    selectWall: (id) => set({ selectedWallId: id }),
+    selectWall: (id) => set({ selectedWallId: id, selectedNodeId: id ? null : get().selectedNodeId }),
     setWallStyle: (style) => set({ wallStyle: { ...get().wallStyle, ...style } }),
     setDimensionMode: (m) => set({ dimensionMode: m }),
     clearPlanNotice: () => set({ planNotice: null, openEndHighlights: [] }),
@@ -964,6 +989,86 @@ export const useTileFlowStore = create<TileFlowState>()(
     leavePatternGroup: (roomId) => {
       const { plan } = get();
       if (plan) commitPlan(leaveGroupIn(plan, roomId));
+    },
+
+    selectedNodeId: null,
+    selectNode: (id) => set({ selectedNodeId: id, selectedWallId: id ? null : get().selectedWallId }),
+    elevationWallId: null,
+    setElevationWall: (id) => set({ elevationWallId: id }),
+
+    addOpening: (wallId, kind) => {
+      const { plan, system } = get();
+      const wall = plan?.walls.find((w) => w.id === wallId);
+      if (!plan || !wall) return false;
+      // Standard rough openings: a 36″ door (38″ × 82½″ RO), a 36″ × 48″ window
+      // at a 36″ sill; metric 900 × 2100 and 1200 × 1200 at 900.
+      const inch = (n: number) => n * MM_PER_INCH;
+      const metric = system === 'metric';
+      const size =
+        kind === 'window'
+          ? metric
+            ? { roughWidth: 1200, roughHeight: 2100, sillHeight: 900 }
+            : { roughWidth: inch(36), roughHeight: inch(84), sillHeight: inch(36) }
+          : metric
+          ? { roughWidth: 900, roughHeight: 2100 }
+          : { roughWidth: inch(38), roughHeight: inch(82.5) };
+      const opening: Opening = { id: newId('o'), wallId, kind, center: wallLength(plan, wall) / 2, ...size };
+      const next = { ...plan, openings: [...plan.openings, opening] };
+      const problem = openingProblem(next, opening);
+      if (problem) {
+        set({ planNotice: problem.message });
+        return false;
+      }
+      return commitPlan(next);
+    },
+
+    updateOpening: (id, patch, opts = {}) => {
+      const { plan } = get();
+      const current = plan?.openings.find((o) => o.id === id);
+      if (!plan || !current) return false;
+      const updated = { ...current, ...patch };
+      const next = { ...plan, openings: plan.openings.map((o) => (o.id === id ? updated : o)) };
+      const problem = openingProblem(next, updated);
+      if (problem) {
+        // A drag just stops at the limit; a typed value says why it was refused.
+        if (!opts.quiet) set({ planNotice: problem.message });
+        return false;
+      }
+      return commitPlan(next);
+    },
+
+    deleteOpening: (id) => {
+      const { plan } = get();
+      if (plan) commitPlan({ ...plan, openings: plan.openings.filter((o) => o.id !== id) });
+    },
+
+    setWallFraming: (wallId, patch) => {
+      const { plan } = get();
+      if (!plan) return;
+      commitPlan({
+        ...plan,
+        walls: plan.walls.map((w) => {
+          if (w.id !== wallId) return w;
+          const framing = { ...w.framing, ...patch };
+          for (const k of Object.keys(framing) as (keyof WallFraming)[]) {
+            if (framing[k] === undefined) delete framing[k];
+          }
+          return { ...w, framing };
+        }),
+      });
+    },
+
+    setFramingDefaults: (patch) => {
+      const { plan } = get();
+      if (plan) commitPlan({ ...plan, framingDefaults: { ...plan.framingDefaults, ...patch } });
+    },
+
+    setJunction: (nodeId, patch) => {
+      const { plan } = get();
+      if (!plan) return;
+      const existing = plan.junctions.find((j) => j.nodeId === nodeId) ?? { nodeId };
+      const merged: JunctionChoice = { ...existing, ...patch };
+      commitPlan({ ...plan, junctions: [...plan.junctions.filter((j) => j.nodeId !== nodeId), merged] });
     },
 
     setRoomLayouts: (updates, timeMs) =>

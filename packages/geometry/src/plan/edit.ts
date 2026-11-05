@@ -91,6 +91,11 @@ export function splitWallAt(
   const first: PlanWall = { ...wall, b: nodeId };
   const second: PlanWall = { ...wall, id: newId('w'), a: nodeId };
   next.walls.splice(i, 1, first, second);
+  // Openings go with the half they sit in, measured from that half's start.
+  const splitAt = t * dist(a, b);
+  next.openings = (plan.openings ?? []).map((o) =>
+    o.wallId === wallId && o.center > splitAt ? { ...o, wallId: second.id, center: o.center - splitAt } : o
+  );
   return { plan: next, nodeId };
 }
 
@@ -350,7 +355,11 @@ export function flipWall(plan: Plan, wallId: string): Plan {
 export function deleteWall(plan: Plan, wallId: string): Plan {
   const wall = plan.walls.find((w) => w.id === wallId);
   if (!wall) return plan;
-  let next: Plan = { ...plan, walls: plan.walls.filter((w) => w.id !== wallId) };
+  let next: Plan = {
+    ...plan,
+    walls: plan.walls.filter((w) => w.id !== wallId),
+    openings: (plan.openings ?? []).filter((o) => o.wallId !== wallId),
+  };
 
   for (const nodeId of [wall.a, wall.b]) {
     const at = wallsAtNode(next, nodeId);
@@ -360,7 +369,15 @@ export function deleteWall(plan: Plan, wallId: string): Plan {
       next = mergeAt(next, nodeId, at[0], at[1]);
     }
   }
-  return next;
+  // A junction choice naming a wall or node that is gone means nothing now.
+  const nodes = new Set(next.nodes.map((n) => n.id));
+  const walls = new Set(next.walls.map((w) => w.id));
+  return {
+    ...next,
+    junctions: (next.junctions ?? []).filter(
+      (j) => nodes.has(j.nodeId) && (!j.throughWallId || walls.has(j.throughWallId))
+    ),
+  };
 }
 
 function mergeAt(plan: Plan, nodeId: string, w1: PlanWall, w2: PlanWall): Plan {
@@ -377,10 +394,14 @@ function mergeAt(plan: Plan, nodeId: string, w1: PlanWall, w2: PlanWall): Plan {
   if (Math.abs(u.x * v.y - u.y * v.x) > 1e-9 || u.x * v.x + u.y * v.y < 0) return plan;
 
   const merged: PlanWall = { ...first, b: second.b };
+  const offset = wallLength(plan, first);
   return {
     ...plan,
     nodes: plan.nodes.filter((n) => n.id !== nodeId),
     walls: plan.walls.filter((w) => w.id !== second.id).map((w) => (w.id === first.id ? merged : w)),
+    openings: (plan.openings ?? []).map((o) =>
+      o.wallId === second.id ? { ...o, wallId: first.id, center: o.center + offset } : o
+    ),
   };
 }
 

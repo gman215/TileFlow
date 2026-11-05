@@ -3,7 +3,15 @@ import { Line, Circle, Text, Group } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { Context } from 'konva/lib/Context';
 import type { Polygon, Vec2, WallSolid } from '@tileflow/geometry';
-import { layerBoundaries, polygonArea, wallsOf } from '@tileflow/geometry';
+import {
+  layerBoundaries,
+  polygonArea,
+  wallsOf,
+  frameWalls,
+  openingFootprints,
+  cutOpenings,
+  studFootprints,
+} from '@tileflow/geometry';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import { formatDisplayFromMM, roomDisplay } from '../../utils/measurements';
 import { snapPoint, snapGridMM } from '../../utils/snapping';
@@ -22,6 +30,12 @@ const WARN = '#F87171';
 const GROUP_COLOR = '#93C5FD';
 const HANDLE_FILL = '#D6D3CC';
 const HANDLE_STROKE = '#1B1A18';
+const WOOD = '#E3CFA3';
+const WOOD_EDGE = 'rgba(27,26,24,0.55)';
+const GLASS = '#BFD9EE';
+
+/** Studs are drawn in plan once a 1½″ stud is at least this wide on screen (009 AC-8.1). */
+const STUDS_MIN_PX = 4;
 
 const MM2_PER_M2 = 1_000_000;
 const MM2_PER_FT2 = 92_903.04;
@@ -129,6 +143,9 @@ export default function PlanLayer({ scale, interactive }: Props) {
   const system = useTileFlowStore((s) => s.system);
   const activeRoomId = useTileFlowStore((s) => s.activeRoomId);
   const selectedWallId = useTileFlowStore((s) => s.selectedWallId);
+  const selectedNodeId = useTileFlowStore((s) => s.selectedNodeId);
+  const selectNode = useTileFlowStore((s) => s.selectNode);
+  const updateOpening = useTileFlowStore((s) => s.updateOpening);
   const dimensionMode = useTileFlowStore((s) => s.dimensionMode);
   const openEnds = useTileFlowStore((s) => s.openEndHighlights);
   const selectWall = useTileFlowStore((s) => s.selectWall);
@@ -155,6 +172,33 @@ export default function PlanLayer({ scale, interactive }: Props) {
   );
 
   const showLayers = scale * 12.7 >= LAYER_LINES_MIN_PX;
+
+  // Framing is derived from the plan, like the rooms.
+  const framed = useMemo(() => (plan ? frameWalls(plan) : []), [plan]);
+  const footprints = useMemo(() => (plan ? openingFootprints(plan) : []), [plan]);
+  const doorCuts = useMemo(
+    () => footprints.filter((f) => f.opening.kind !== 'window').map((f) => f.polygon),
+    [footprints]
+  );
+  // Each wall's footprint with its doorways cut out — what gets painted.
+  const finishPieces = useMemo(
+    () =>
+      new Map(
+        (derived?.finishGeometry.solids ?? []).map((s) => [s.wallId, cutOpenings([s.polygon], doorCuts)])
+      ),
+    [derived, doorCuts]
+  );
+  const corePieces = useMemo(
+    () =>
+      new Map((derived?.coreGeometry.solids ?? []).map((s) => [s.wallId, cutOpenings([s.polygon], doorCuts)])),
+    [derived, doorCuts]
+  );
+  const minStud = useMemo(
+    () => Math.min(...(plan?.assemblies ?? []).map((a) => a.framing?.studWidth ?? Infinity)),
+    [plan?.assemblies]
+  );
+  const showStuds = Number.isFinite(minStud) && minStud * scale >= STUDS_MIN_PX;
+  const studs = useMemo(() => (plan && showStuds ? studFootprints(plan, framed) : []), [plan, framed, showStuds]);
 
   // Parallel wall drags move by the increment since the last event; Konva
   // reports the cumulative drag, so remember where we were.
@@ -232,24 +276,63 @@ export default function PlanLayer({ scale, interactive }: Props) {
         ))
       )}
 
-      {/* Wall poché: finish layers, then the core on top */}
-      {[...finishSolids.map((s) => s.polygon), ...derived.finishGeometry.caps].map((p, i) => (
+      {/* Wall poché: finish layers, then the core on top, doorways cut out */}
+      {[...[...finishPieces.values()].flat(), ...derived.finishGeometry.caps].map((p, i) => (
         <Line key={`fin-${i}`} points={flat(p)} closed fill={WALL_FINISH} listening={false} perfectDrawEnabled={false} />
       ))}
-      {[...derived.coreGeometry.solids.map((s) => s.polygon), ...derived.coreGeometry.caps].map((p, i) => (
+      {[...[...corePieces.values()].flat(), ...derived.coreGeometry.caps].map((p, i) => (
         <Line key={`core-${i}`} points={flat(p)} closed fill={WALL_CORE} listening={false} perfectDrawEnabled={false} />
       ))}
       {showLayers &&
+        !showStuds &&
         derived.coreGeometry.solids.map((s) => (
-          <Group key={`hatch-${s.wallId}`} clipFunc={(ctx: Context) => tracePolygon(ctx, s.polygon)} listening={false}>
+          <Group
+            key={`hatch-${s.wallId}`}
+            clipFunc={(ctx: Context) => (corePieces.get(s.wallId) ?? [s.polygon]).forEach((p) => tracePolygon(ctx, p))}
+            listening={false}
+          >
             {hatch(s.polygon)}
           </Group>
         ))}
       {showLayers &&
         finishSolids.map((s) => (
-          <Group key={`layers-${s.wallId}`} clipFunc={(ctx: Context) => tracePolygon(ctx, s.polygon)} listening={false}>
+          <Group
+            key={`layers-${s.wallId}`}
+            clipFunc={(ctx: Context) => (finishPieces.get(s.wallId) ?? [s.polygon]).forEach((p) => tracePolygon(ctx, p))}
+            listening={false}
+          >
             {wallLayers(s)}
           </Group>
+        ))}
+
+      {/* Studs in plan, once they are big enough to read */}
+      {studs.map((st, i) => (
+        <Line
+          key={`stud-${i}`}
+          points={flat(st.polygon)}
+          closed
+          fill={WOOD}
+          stroke={WOOD_EDGE}
+          strokeWidth={0.75 / scale}
+          listening={false}
+          perfectDrawEnabled={false}
+        />
+      ))}
+
+      {/* Windows: glazing across the wall */}
+      {footprints
+        .filter((f) => f.opening.kind === 'window')
+        .map((f) => (
+          <Line
+            key={`win-${f.opening.id}`}
+            points={flat(f.polygon)}
+            closed
+            fill={GLASS}
+            stroke={WOOD_EDGE}
+            strokeWidth={1 / scale}
+            listening={false}
+            perfectDrawEnabled={false}
+          />
         ))}
 
       {/* Selected wall */}
@@ -394,6 +477,43 @@ export default function PlanLayer({ scale, interactive }: Props) {
           );
         })}
 
+      {/* Openings: pick to select their wall, drag to slide along it */}
+      {interactive &&
+        footprints.map((f) => (
+          <Line
+            key={`op-${f.opening.id}`}
+            points={flat(f.polygon)}
+            closed
+            fill="rgba(245,158,11,0.001)"
+            stroke={selectedWallId === f.opening.wallId ? SELECTED : 'transparent'}
+            strokeWidth={1.5 / scale}
+            dash={[6 / scale, 4 / scale]}
+            draggable
+            onClick={(e) => {
+              e.cancelBubble = true;
+              selectWall(f.opening.wallId);
+            }}
+            onDragStart={(e: KonvaEventObject<DragEvent>) => {
+              e.cancelBubble = true;
+              selectWall(f.opening.wallId);
+              beginDrag();
+            }}
+            onDragMove={(e: KonvaEventObject<DragEvent>) => {
+              const p = e.target.getStage()?.getRelativePointerPosition();
+              e.target.position({ x: 0, y: 0 });
+              if (!p) return;
+              const along = (p.x - f.a.x) * f.u.x + (p.y - f.a.y) * f.u.y;
+              const snapped = Math.round(along / gridMM) * gridMM;
+              updateOpening(f.opening.id, { center: snapped }, { quiet: true });
+            }}
+            onDragEnd={(e: KonvaEventObject<DragEvent>) => {
+              e.target.position({ x: 0, y: 0 });
+              endDrag();
+            }}
+            perfectDrawEnabled={false}
+          />
+        ))}
+
       {/* Node handles */}
       {interactive &&
         plan.nodes.map((n) => (
@@ -401,11 +521,15 @@ export default function PlanLayer({ scale, interactive }: Props) {
             key={`node-${n.id}`}
             x={n.position.x}
             y={n.position.y}
-            radius={5.5 / scale}
-            fill={HANDLE_FILL}
+            radius={(n.id === selectedNodeId ? 7 : 5.5) / scale}
+            fill={n.id === selectedNodeId ? SELECTED : HANDLE_FILL}
             stroke={HANDLE_STROKE}
             strokeWidth={1.5 / scale}
             draggable
+            onClick={(e) => {
+              e.cancelBubble = true;
+              selectNode(n.id === selectedNodeId ? null : n.id);
+            }}
             onDragStart={(e) => {
               e.cancelBubble = true;
               beginDrag();

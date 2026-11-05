@@ -80,9 +80,55 @@ const AssemblySchema = z
  * Every reference is checked, so a plan that names a missing node or
  * build-up is a 400 rather than a project that cannot be opened.
  */
+const FramingSchema = z.object({
+  framedHeight: z.number().positive().max(10000),
+  spacing: z.number().positive().max(2000),
+  layoutFrom: z.enum(['a', 'b']),
+  topPlates: z.union([z.literal(1), z.literal(2)]),
+  loadBearing: z.boolean().optional(),
+});
+
+const OpeningSchema = z.object({
+  id: Id,
+  wallId: Id,
+  kind: z.enum(['door', 'window', 'cased-opening']),
+  center: z.number().finite().min(-100000).max(100000),
+  roughWidth: z.number().positive().max(10000),
+  roughHeight: z.number().positive().max(10000),
+  sillHeight: z.number().min(0).max(10000).optional(),
+  floorTransition: z.enum(['centerline', 'through', 'room-side']).optional(),
+  side: z.enum(['left', 'right']).optional(),
+});
+
 export const PlanSchema = z
   .object({
-    version: z.literal(1),
+    /** 1 = 008 (no framing), 2 = 009. The client upgrades a v1 plan on load. */
+    version: z.union([z.literal(1), z.literal(2)]),
+    framingDefaults: FramingSchema.optional(),
+    openings: z.array(OpeningSchema).max(500).default([]),
+    junctions: z
+      .array(
+        z.object({
+          nodeId: Id,
+          throughWallId: Id.optional(),
+          corner: z.enum(['three-stud', 'california']).optional(),
+          partition: z.enum(['post', 'ladder']).optional(),
+        })
+      )
+      .max(1000)
+      .default([]),
+    headerRules: z
+      .array(
+        z.object({
+          loadBearing: z.boolean(),
+          maxSpan: z.number().positive().max(1_000_000),
+          member: z.string().min(1).max(40),
+          plies: z.number().int().min(1).max(4),
+          depth: z.number().positive().max(1000),
+        })
+      )
+      .max(20)
+      .optional(),
     nodes: z.array(z.object({ id: Id, position: PointSchema })).max(1000),
     walls: z
       .array(
@@ -93,6 +139,7 @@ export const PlanSchema = z
           assemblyId: Id,
           locationLine: z.enum(['centerline', 'core-center', 'finish-left', 'finish-right', 'core-left', 'core-right']),
           flipped: z.boolean().optional(),
+          framing: FramingSchema.partial().optional(),
         })
       )
       .max(1500),
@@ -149,6 +196,19 @@ export const PlanSchema = z
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['groups', i], message: 'Group refers to a missing room' });
       }
     });
+    const walls = new Set(plan.walls.map((w) => w.id));
+    const perWall = new Map<string, number>();
+    plan.openings.forEach((o, i) => {
+      if (!walls.has(o.wallId)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['openings', i], message: 'Opening refers to a missing wall' });
+      }
+      perWall.set(o.wallId, (perWall.get(o.wallId) ?? 0) + 1);
+    });
+    for (const [wallId, n] of perWall) {
+      if (n > 20) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['openings'], message: `More than 20 openings on wall ${wallId}` });
+      }
+    }
   });
 
 export const CreateProjectSchema = z.object({

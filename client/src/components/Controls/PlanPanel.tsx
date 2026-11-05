@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import type { LocationLine } from '@tileflow/geometry';
 import { polygonArea, polygonPerimeter, totalThickness, IMPERIAL_ASSEMBLY_IDS, METRIC_ASSEMBLY_IDS } from '@tileflow/geometry';
 import { useTileFlowStore } from '../../store/tileFlowStore';
-import { settingsOf } from '../../store/planHelpers';
+import { tileTotals } from '../../store/planHelpers';
 import { formatDisplayFromMM, groutDisplay, roomDisplay, tileDisplay } from '../../utils/measurements';
 import { ORDER_BUFFER } from '../../api/ai';
 import DimensionField from './DimensionField';
@@ -85,33 +85,21 @@ export default function PlanPanel() {
     });
   }, [activeDerived]);
 
-  /**
-   * Totals per tile product (size + pattern). Rooms in one pattern group are
-   * one product by construction. Counts are summed from engine results; the
-   * order quantity applies the same buffer the Stats card uses.
-   */
-  const totals = useMemo(() => {
-    if (!plan) return [];
-    const rows = new Map<string, { label: string; tiles: number; cuts: number; area: number; rooms: string[] }>();
-    for (const r of plan.rooms) {
-      const layout = roomLayouts[r.id];
-      if (!layout || derived?.rooms.get(r.id)?.status !== 'ok') continue;
-      const { tileConfig } = settingsOf(plan, r);
-      const key = `${tileConfig.width.toFixed(3)}×${tileConfig.height.toFixed(3)}|${tileConfig.pattern}`;
-      const label = `${formatDisplayFromMM(tileConfig.width, tileDims.unit, tileDims.imperialFormat)} × ${formatDisplayFromMM(
-        tileConfig.height,
-        tileDims.unit,
-        tileDims.imperialFormat
-      )} · ${tileConfig.pattern}`;
-      const row = rows.get(key) ?? { label, tiles: 0, cuts: 0, area: 0, rooms: [] };
-      row.tiles += layout.fullTileCount + layout.cutTileCount;
-      row.cuts += layout.cutTileCount;
-      row.area += layout.roomArea;
-      row.rooms.push(r.name);
-      rows.set(key, row);
-    }
-    return [...rows.values()];
-  }, [plan, derived, roomLayouts, tileDims.unit, tileDims.imperialFormat]);
+  // Order quantity applies the same buffer the Stats card uses.
+  const totals = useMemo(
+    () =>
+      plan
+        ? tileTotals(plan, derived, roomLayouts).map((t) => ({
+            ...t,
+            label: `${formatDisplayFromMM(t.tileConfig.width, tileDims.unit, tileDims.imperialFormat)} × ${formatDisplayFromMM(
+              t.tileConfig.height,
+              tileDims.unit,
+              tileDims.imperialFormat
+            )} · ${t.tileConfig.pattern}`,
+          }))
+        : [],
+    [plan, derived, roomLayouts, tileDims.unit, tileDims.imperialFormat]
+  );
 
   if (!plan || !derived) return null;
 
