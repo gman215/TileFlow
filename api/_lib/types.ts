@@ -120,6 +120,69 @@ export interface RoomFromImageDTO extends DemoFlagged {
   detectedSystem: 'metric' | 'imperial' | 'unknown';
 }
 
+// ─── 003 · assistant ──────────────────────────────────────────────────────────
+
+/**
+ * What the client reports back after executing one call. `result` is whatever
+ * the client tool returned — read back from the store after the call (AC-4.5).
+ * Opaque to the server: it is serialised for the model and never interpreted.
+ */
+export interface AssistantToolResultDTO {
+  callId: string;
+  name: string;
+  result: Record<string, unknown>;
+}
+
+/** A user turn. Starts a conversation, or continues one with `previousInteractionId`. */
+export interface AssistantMessageRequestDTO {
+  message: string;
+  snapshot: LayoutStatsDTO;
+  previousInteractionId?: string;
+}
+
+/**
+ * Results of the calls the previous response asked for. Always chained, so
+ * `previousInteractionId` is required. `roundTrip` is the number of this trip
+ * (2..4): the route holds no state, so it is told where in the loop it is and
+ * refuses past the cap — a backstop behind the client's own cap, not instead.
+ */
+export interface AssistantResultsRequestDTO {
+  results: AssistantToolResultDTO[];
+  snapshot: LayoutStatsDTO;
+  previousInteractionId: string;
+  roundTrip: number;
+}
+
+export type AssistantRequestDTO = AssistantMessageRequestDTO | AssistantResultsRequestDTO;
+
+/** A call the model requested, already filtered to declared tool names server-side. */
+export interface AssistantCallDTO {
+  id: string;
+  name: string;
+  /** Unvalidated. The client Zod-checks it before the store is touched (AC-3.3). */
+  arguments: unknown;
+}
+
+/** `POST /api/ai/assistant`. The server never applies `calls`; the client does (AC-3.1). */
+export interface AssistantResponseDTO extends DemoFlagged {
+  /** ≤ 1200 characters. May be empty when the model only asked for calls. */
+  reply: string;
+  calls: AssistantCallDTO[];
+  /**
+   * Chain the next request with this. Empty in demo mode: there is no stored
+   * interaction to continue, so the client must start fresh.
+   */
+  interactionId: string;
+  /** 1..4 — which trip of the current user message this response answers. */
+  roundTrip: number;
+  /**
+   * How many calls named a tool we never declared, dropped server-side. Only a
+   * count — the names are model-chosen strings and stay in the server log — so
+   * the transcript can say an unsupported action was requested (AC-6.2).
+   */
+  unsupportedCalls?: number;
+}
+
 // ─── Health ───────────────────────────────────────────────────────────────────
 
 /**

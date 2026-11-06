@@ -19,6 +19,8 @@
 
 import type {
   AiHealthDTO,
+  AssistantRequestDTO,
+  AssistantResponseDTO,
   LayoutStatsDTO,
   MeasurementSystem,
   RoomFromImageDTO,
@@ -162,6 +164,18 @@ export const ai = {
    */
   roomFromImage: (body: RoomFromImageRequestDTO, signal?: AbortSignal) =>
     request<RoomFromImageDTO>('/room-from-image', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      signal,
+    }),
+
+  /**
+   * 003 — one trip of the layout assistant: a user message, or the results of
+   * the calls the previous trip asked for. The response's `calls` are requests,
+   * not changes; nothing is applied until `client/src/ai/tools.ts` runs them.
+   */
+  assistant: (body: AssistantRequestDTO, signal?: AbortSignal) =>
+    request<AssistantResponseDTO>('/assistant', {
       method: 'POST',
       body: JSON.stringify(body),
       signal,

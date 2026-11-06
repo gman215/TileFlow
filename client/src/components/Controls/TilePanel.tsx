@@ -9,7 +9,7 @@ import {
 import { groutDisplay, tileDisplay } from '../../utils/measurements';
 import DimensionField from './DimensionField';
 
-const PATTERNS: { value: PatternType; label: string }[] = [
+export const PATTERNS: { value: PatternType; label: string }[] = [
   { value: 'grid', label: 'Grid' },
   { value: 'offset-1/2', label: '½ Offset' },
   { value: 'offset-1/3', label: '⅓ Offset' },
