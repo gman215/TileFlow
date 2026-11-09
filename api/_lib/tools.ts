@@ -133,8 +133,8 @@ export const TOOL_DECLARATIONS: readonly ToolDeclaration[] = [
     name: 'set_room_size',
     description:
       'Set the width and height of a plain rectangular room. Has no effect while a drawn ' +
-      'outline exists — the outline governs, and the result will say so; offer ' +
-      'reset_to_rectangle rather than claiming the change.',
+      'outline exists — the outline governs, and the result will say so; offer a reset ' +
+      '(reset_to_rectangle, which asks the user to confirm) rather than claiming the change.',
     parameters: {
       type: 'object',
       properties: {
@@ -168,8 +168,10 @@ export const TOOL_DECLARATIONS: readonly ToolDeclaration[] = [
     type: 'function',
     name: 'reset_to_rectangle',
     description:
-      'Discard the drawn outline and return to a plain rectangle of its bounding size. ' +
-      'Destructive: only call it when the user has asked for it or agreed to it.',
+      'Offer to discard the drawn outline and return to a plain rectangle of its bounding ' +
+      'size. This tool never changes the room by itself: it shows the user a confirmation ' +
+      'button, and only their click resets the outline. Call it when the user asks for a reset ' +
+      'or agrees to one, then tell them to click the button. Never call it twice in a turn.',
     parameters: { type: 'object', properties: {} },
   },
   {

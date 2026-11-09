@@ -189,8 +189,8 @@ export const TOOL_MAP = {
           ok: false,
           reason: 'room_has_outline',
           message:
-            'The room is a drawn outline, so width/height are read-only. ' +
-            'Edit wall lengths, or call reset_to_rectangle first.',
+            'The room is a drawn outline, so width/height are read-only. Edit wall ' +
+            'lengths, or offer to reset it to a rectangle — the user confirms that themselves.',
           ...roomNow(),
         };
       }
@@ -242,14 +242,26 @@ export const TOOL_MAP = {
   ),
 
   reset_to_rectangle: tool(z.object({}).strict(), () => {
-    // The alternative `set_room_size` offers — so it must not be the call that
-    // breaks a floor plan, where `resetToRect` would only rewrite a view the
-    // next plan commit rebuilds from the walls.
+    // Never touches the store. Discarding a drawn outline is the one tool call
+    // that destroys work the user did by hand, and on the live demo the model
+    // once made it unasked — despite a prompt rule against exactly that. So the
+    // rule is structural now: this only *asks*, the panel turns the result into
+    // a button, and the user's click is what resets (same rule as Apply on a
+    // photo proposal). Floor plans refuse first: there `resetToRect` would only
+    // rewrite a view the next plan commit rebuilds from the walls.
     const plan = inFloorPlan();
     if (plan) return plan;
-    store().resetToRect();
-    const { room } = store();
-    return { ok: !room.shape, is_drawn: Boolean(room.shape), width_mm: room.width, height_mm: room.height };
+    if (!store().room.shape) {
+      return { ok: false, reason: 'no_outline', message: 'The room is already a plain rectangle.' };
+    }
+    return {
+      ok: false,
+      reason: 'needs_confirmation',
+      message:
+        'Nothing was changed. Resetting discards the drawn outline, so the user confirms it ' +
+        'with the "Reset outline to a rectangle" button now shown under your reply. Tell them ' +
+        'to click it if they want the reset. Do not call this tool again.',
+    };
   }),
 
   read_layout_stats: tool(z.object({}).strict(), () => {

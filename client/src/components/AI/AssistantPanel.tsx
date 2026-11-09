@@ -101,7 +101,36 @@ function rejectionReason(o: ToolOutcome): string {
   }
 }
 
+/**
+ * The only way the assistant's reset happens: the user clicks this. The tool
+ * itself just asks (see `reset_to_rectangle` in `client/src/ai/tools.ts`), so a
+ * model that requests a reset unprompted can never discard a drawn outline.
+ * The click goes straight to the store's `resetToRect`, a user action that
+ * joins outline history — Ctrl+Z brings the outline back.
+ */
+function ConfirmReset() {
+  const hasOutline = useTileFlowStore((s) => Boolean(s.room.shape) && !s.plan);
+  const resetToRect = useTileFlowStore((s) => s.resetToRect);
+  const [done, setDone] = useState(false);
+  if (done) {
+    return <span className="seg seg-idle px-1.5 py-0.5 text-[10px]">Outline reset — Ctrl+Z restores it</span>;
+  }
+  return (
+    <button
+      onClick={() => { resetToRect(); setDone(true); }}
+      disabled={!hasOutline}
+      title={hasOutline ? 'Discard the drawn outline and use a plain rectangle' : 'There is no drawn outline to reset'}
+      className="seg seg-active px-2 py-0.5 text-[10px] disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      Reset outline to a rectangle
+    </button>
+  );
+}
+
 function Chip({ outcome, system }: { outcome: ToolOutcome; system: MeasurementSystem }) {
+  if (outcome.name === 'reset_to_rectangle' && outcome.result.reason === 'needs_confirmation') {
+    return <ConfirmReset />;
+  }
   if (outcome.applied) {
     const read = outcome.name === 'read_layout_stats';
     // Changes are solid; a read is quiet — it changed nothing.
