@@ -3,7 +3,7 @@ import type { AlignmentMode } from '@tileflow/geometry';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import InfoTip from './InfoTip';
 
-const ALIGNMENTS: { value: AlignmentMode; label: string; blurb: string }[] = [
+export const ALIGNMENTS: { value: AlignmentMode; label: string; blurb: string }[] = [
   { value: 'optimize', label: 'Least waste', blurb: 'Slides the pattern to the position that wastes least and avoids slivers.' },
   { value: 'center-tile', label: 'Centre a tile', blurb: 'A full tile sits in the middle of the room (or on the squaring wall).' },
   { value: 'center-grout', label: 'Centre a joint', blurb: 'A grout line runs through the middle — symmetric cuts at both walls.' },

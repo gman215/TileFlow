@@ -19,6 +19,8 @@
 
 import type {
   AiHealthDTO,
+  AssistantRequestDTO,
+  AssistantResponseDTO,
   LayoutStatsDTO,
   MeasurementSystem,
   RoomFromImageDTO,
@@ -26,6 +28,14 @@ import type {
 } from '@api/_lib/types';
 import { rectShape, summarizeShape } from '@tileflow/geometry';
 import { useTileFlowStore } from '../store/tileFlowStore';
+import {
+  formatArea,
+  formatWaste,
+  formatWithUnit,
+  groutDisplay,
+  roomDisplay,
+  tileDisplay,
+} from '../utils/measurements';
 
 const BASE = '/api/ai';
 
@@ -166,6 +176,18 @@ export const ai = {
       body: JSON.stringify(body),
       signal,
     }),
+
+  /**
+   * 003 — one trip of the layout assistant: a user message, or the results of
+   * the calls the previous trip asked for. The response's `calls` are requests,
+   * not changes; nothing is applied until `client/src/ai/tools.ts` runs them.
+   */
+  assistant: (body: AssistantRequestDTO, signal?: AbortSignal) =>
+    request<AssistantResponseDTO>('/assistant', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      signal,
+    }),
 };
 
 // ─── Store → DTO ──────────────────────────────────────────────────────────────
@@ -182,6 +204,10 @@ export function statsDto(): LayoutStatsDTO | null {
 
   const summary = summarizeShape(room.shape ?? rectShape(room.width, room.height));
   const totalTiles = layout.fullTileCount + layout.cutTileCount;
+  const orderQuantity = Math.ceil(totalTiles * ORDER_BUFFER);
+  const sys = system as MeasurementSystem;
+  const room_ = roomDisplay(sys);
+  const tile_ = tileDisplay(sys);
 
   return {
     system: system as MeasurementSystem,
@@ -193,7 +219,8 @@ export function statsDto(): LayoutStatsDTO | null {
       perimeterMm: summary.perimeter,
       wallCount: summary.wallCount,
       holeCount: summary.holeCount,
-      referenceWall: room.shape?.referenceWall ?? null,
+      // The wall table's label, never the raw index — see the DTO.
+      referenceWall: room.shape?.referenceWall != null ? `W${room.shape.referenceWall + 1}` : null,
       isDrawn: Boolean(room.shape),
     },
     tile: {
@@ -210,7 +237,20 @@ export function statsDto(): LayoutStatsDTO | null {
       wastePercentage: layout.wastePercentage,
       smallestCutPieceMm2: layout.smallestCutPiece,
       roomAreaMm2: layout.roomArea,
-      orderQuantity: Math.ceil(totalTiles * ORDER_BUFFER),
+      orderQuantity,
+    },
+    // Formatted exactly as the sidebar and stats card format them, by the same
+    // helpers — the strings a model is allowed to say out loud.
+    display: {
+      roomSize: `${formatWithUnit(room.width, room_)} × ${formatWithUnit(room.height, room_)}`,
+      area: formatArea(layout.roomArea, sys),
+      tileSize: `${formatWithUnit(tileConfig.width, tile_)} × ${formatWithUnit(tileConfig.height, tile_)}`,
+      grout: formatWithUnit(tileConfig.grout, groutDisplay(sys)),
+      orderQuantity: String(orderQuantity),
+      waste: formatWaste(layout.wastePercentage),
+      fullTiles: String(layout.fullTileCount),
+      cutTiles: String(layout.cutTileCount),
+      totalTiles: String(totalTiles),
     },
   };
 }

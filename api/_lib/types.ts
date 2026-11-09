@@ -43,8 +43,13 @@ export interface LayoutStatsDTO {
     wallCount: number;
     /** Cut-outs (islands, columns, tubs) that are not tiled. */
     holeCount: number;
-    /** Index of the wall the layout is squared to, or null. */
-    referenceWall: number | null;
+    /**
+     * The wall the layout is squared to, by its label in the wall table
+     * ("W3"), or null. A label, not an index: this shape is what a model
+     * reads, and a model told "index 2" names it to the user as "wall 2" —
+     * which on screen is W2, a different wall.
+     */
+    referenceWall: string | null;
     /** False when the room is still a plain W × H rectangle. */
     isDrawn: boolean;
   };
@@ -69,6 +74,29 @@ export interface LayoutStatsDTO {
     roomAreaMm2: number;
     /** Tiles to buy, including the 10% buffer — what StatsPanel shows. */
     orderQuantity: number;
+  };
+
+  /**
+   * The figures above as the user sees them on screen, in their units —
+   * formatted by the same helpers as the sidebar and the stats card, so a
+   * model that quotes one quotes exactly what is displayed (Constitution I).
+   * The raw fields are for code; these are for saying.
+   */
+  display: {
+    /** "12 ft 0 in × 10 ft 0 in" / "3.66 m × 3.05 m" — the bounding box when drawn. */
+    roomSize: string;
+    /** "120.0 ft²" / "11.15 m²" — the stats card's Area. */
+    area: string;
+    /** "12 in × 24 in" / "30 cm × 60 cm" */
+    tileSize: string;
+    /** "1/8 in" / "3 mm" */
+    grout: string;
+    /** The stats card's hero figures and counts. */
+    orderQuantity: string;
+    waste: string;
+    fullTiles: string;
+    cutTiles: string;
+    totalTiles: string;
   };
 }
 
@@ -118,6 +146,69 @@ export interface RoomFromImageDTO extends DemoFlagged {
   notes: string;
   /** The units printed on the drawing, not the units of this response. */
   detectedSystem: 'metric' | 'imperial' | 'unknown';
+}
+
+// ─── 003 · assistant ──────────────────────────────────────────────────────────
+
+/**
+ * What the client reports back after executing one call. `result` is whatever
+ * the client tool returned — read back from the store after the call (AC-4.5).
+ * Opaque to the server: it is serialised for the model and never interpreted.
+ */
+export interface AssistantToolResultDTO {
+  callId: string;
+  name: string;
+  result: Record<string, unknown>;
+}
+
+/** A user turn. Starts a conversation, or continues one with `previousInteractionId`. */
+export interface AssistantMessageRequestDTO {
+  message: string;
+  snapshot: LayoutStatsDTO;
+  previousInteractionId?: string;
+}
+
+/**
+ * Results of the calls the previous response asked for. Always chained, so
+ * `previousInteractionId` is required. `roundTrip` is the number of this trip
+ * (2..4): the route holds no state, so it is told where in the loop it is and
+ * refuses past the cap — a backstop behind the client's own cap, not instead.
+ */
+export interface AssistantResultsRequestDTO {
+  results: AssistantToolResultDTO[];
+  snapshot: LayoutStatsDTO;
+  previousInteractionId: string;
+  roundTrip: number;
+}
+
+export type AssistantRequestDTO = AssistantMessageRequestDTO | AssistantResultsRequestDTO;
+
+/** A call the model requested, already filtered to declared tool names server-side. */
+export interface AssistantCallDTO {
+  id: string;
+  name: string;
+  /** Unvalidated. The client Zod-checks it before the store is touched (AC-3.3). */
+  arguments: unknown;
+}
+
+/** `POST /api/ai/assistant`. The server never applies `calls`; the client does (AC-3.1). */
+export interface AssistantResponseDTO extends DemoFlagged {
+  /** ≤ 1200 characters. May be empty when the model only asked for calls. */
+  reply: string;
+  calls: AssistantCallDTO[];
+  /**
+   * Chain the next request with this. Empty in demo mode: there is no stored
+   * interaction to continue, so the client must start fresh.
+   */
+  interactionId: string;
+  /** 1..4 — which trip of the current user message this response answers. */
+  roundTrip: number;
+  /**
+   * How many calls named a tool we never declared, dropped server-side. Only a
+   * count — the names are model-chosen strings and stay in the server log — so
+   * the transcript can say an unsupported action was requested (AC-6.2).
+   */
+  unsupportedCalls?: number;
 }
 
 // ─── Health ───────────────────────────────────────────────────────────────────

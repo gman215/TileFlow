@@ -217,3 +217,34 @@ export function parseDisplayToMM(
 }
 
 export type { ImperialFormat };
+
+// ─── Display strings shared by the UI and the AI snapshot ─────────────────────
+//
+// The stats card and `statsDto()` format through these, so a figure the layout
+// assistant quotes is character-for-character the figure on screen (003). Any
+// change to how a figure reads changes it in both places at once.
+
+const MM2_PER_M2 = 1_000_000;
+const MM2_PER_FT2 = 92_903.04;
+
+/** Floor area as the stats card shows it: ft² to 0.1, m² to 0.01. */
+export function formatArea(mm2: number, system: MeasurementSystem): string {
+  return system === 'imperial'
+    ? `${(mm2 / MM2_PER_FT2).toFixed(1)} ft²`
+    : `${(mm2 / MM2_PER_M2).toFixed(2)} m²`;
+}
+
+/** Waste as the stats card shows it: one decimal, with the percent sign. */
+export function formatWaste(pct: number): string {
+  return `${pct.toFixed(1)}%`;
+}
+
+/**
+ * A length in the unit a field uses, always with its unit. Imperial formats
+ * carry their own ("12 in", "9 ft 2 in"); metric ones are bare numbers, so the
+ * unit is added — a figure read aloud without one is ambiguous.
+ */
+export function formatWithUnit(mm: number, display: FieldDisplay): string {
+  const text = formatDisplayFromMM(mm, display.unit, display.imperialFormat);
+  return isImperialUnit(display.unit) ? text : `${text} ${display.unit}`;
+}

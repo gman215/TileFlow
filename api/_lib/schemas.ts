@@ -34,7 +34,13 @@
 
 import { z, ZodError, type ZodType } from 'zod';
 import { ApiError } from './http.js';
-import type { RoomFromImageDTO, RoomFromImageRequestDTO } from './types.js';
+import type {
+  AssistantMessageRequestDTO,
+  AssistantResultsRequestDTO,
+  LayoutStatsDTO,
+  RoomFromImageDTO,
+  RoomFromImageRequestDTO,
+} from './types.js';
 
 // ─── Pairing ──────────────────────────────────────────────────────────────────
 
@@ -276,3 +282,133 @@ type MirrorMatchesDto =
     : never;
 const MIRROR_MATCHES_DTO: MirrorMatchesDto = true;
 void MIRROR_MATCHES_DTO;
+
+// ─── Shared · the layout snapshot ─────────────────────────────────────────────
+
+/**
+ * The grounding payload as it arrives over the wire. It comes from our own
+ * client, but on a public route "our own client" is anyone with curl — and every
+ * figure in it may be quoted to the user — so it is bounded like any other
+ * input: finite, non-negative, and short strings only.
+ */
+const MM = z.number().finite().min(0).max(1e9);
+const COUNT = z.number().int().min(0).max(1e7);
+const DISPLAY = z.string().max(48).regex(/^[^\r\n]*$/);
+
+export const LayoutStatsIn = z.object({
+  system: z.enum(['metric', 'imperial']),
+  room: z.object({
+    widthMm: MM,
+    heightMm: MM,
+    areaMm2: z.number().finite().min(0).max(1e15),
+    perimeterMm: MM,
+    wallCount: COUNT,
+    holeCount: COUNT,
+    referenceWall: z.string().regex(/^W\d{1,4}$/).nullable(),
+    isDrawn: z.boolean(),
+  }),
+  tile: z.object({
+    widthMm: MM,
+    heightMm: MM,
+    groutMm: MM,
+    pattern: z.string().max(32),
+    alignment: z.string().max(32),
+  }),
+  layout: z.object({
+    fullTileCount: COUNT,
+    cutTileCount: COUNT,
+    totalTiles: COUNT,
+    wastePercentage: z.number().finite().min(0).max(100),
+    smallestCutPieceMm2: z.number().finite().min(0).max(1e15),
+    roomAreaMm2: z.number().finite().min(0).max(1e15),
+    orderQuantity: COUNT,
+  }),
+  // Display strings may be quoted to the user verbatim, so they are held to
+  // a short, printable shape: no line breaks, nothing a model could read as
+  // a new instruction block.
+  display: z.object({
+    roomSize: DISPLAY,
+    area: DISPLAY,
+    tileSize: DISPLAY,
+    grout: DISPLAY,
+    orderQuantity: DISPLAY,
+    waste: DISPLAY,
+    fullTiles: DISPLAY,
+    cutTiles: DISPLAY,
+    totalTiles: DISPLAY,
+  }),
+});
+
+type SnapshotMatchesDto =
+  z.infer<typeof LayoutStatsIn> extends LayoutStatsDTO
+    ? LayoutStatsDTO extends z.infer<typeof LayoutStatsIn>
+      ? true
+      : never
+    : never;
+const SNAPSHOT_MATCHES_DTO: SnapshotMatchesDto = true;
+void SNAPSHOT_MATCHES_DTO;
+
+// ─── 003 · assistant ──────────────────────────────────────────────────────────
+//
+// No response pair: the assistant uses tool calling, not `response_format`.
+// Its output is free prose plus `function_call` steps, and the calls are
+// validated per tool on the client (`client/src/ai/tools.ts`) — the only place
+// that knows each tool's bounds as the store enforces them.
+
+/** Most round-trips one user message may take before the loop stops (AC-3.5). */
+export const ASSISTANT_MAX_ROUND_TRIPS = 4;
+
+/**
+ * Interaction ids are opaque provider tokens. Bounded and charset-limited only
+ * so a caller cannot use the field to smuggle a novel into our request.
+ */
+const INTERACTION_ID = z.string().min(1).max(256).regex(/^[A-Za-z0-9_.:\/-]+$/);
+
+export const AssistantMessageIn = z.object({
+  message: z.string().trim().min(1).max(2000),
+  snapshot: LayoutStatsIn,
+  previousInteractionId: INTERACTION_ID.optional(),
+});
+
+/**
+ * One tool's outcome. `result` is serialised for the model and never read
+ * here; the whole body is capped at 32 KB by `readJson`, which bounds it.
+ */
+const ToolResultIn = z.object({
+  callId: z.string().min(1).max(256),
+  name: z.string().min(1).max(64),
+  result: z.record(z.unknown()),
+});
+
+export const AssistantResultsIn = z.object({
+  // A model turn that requests more calls than this is not a turn we serve.
+  results: z.array(ToolResultIn).min(1).max(16),
+  snapshot: LayoutStatsIn,
+  previousInteractionId: INTERACTION_ID,
+  roundTrip: z.number().int().min(2).max(ASSISTANT_MAX_ROUND_TRIPS),
+});
+
+/**
+ * Discriminated by which key is present rather than a tag field, matching the
+ * two request shapes in the design. `strict()` on each so a body carrying both
+ * `message` and `results` is rejected rather than silently read as one.
+ */
+export const AssistantIn = z.union([AssistantMessageIn.strict(), AssistantResultsIn.strict()]);
+
+type MessageMatchesDto =
+  z.infer<typeof AssistantMessageIn> extends AssistantMessageRequestDTO
+    ? AssistantMessageRequestDTO extends z.infer<typeof AssistantMessageIn>
+      ? true
+      : never
+    : never;
+const MESSAGE_MATCHES_DTO: MessageMatchesDto = true;
+void MESSAGE_MATCHES_DTO;
+
+type ResultsMatchDto =
+  z.infer<typeof AssistantResultsIn> extends AssistantResultsRequestDTO
+    ? AssistantResultsRequestDTO extends z.infer<typeof AssistantResultsIn>
+      ? true
+      : never
+    : never;
+const RESULTS_MATCH_DTO: ResultsMatchDto = true;
+void RESULTS_MATCH_DTO;

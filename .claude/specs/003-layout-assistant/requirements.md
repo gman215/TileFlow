@@ -1,6 +1,6 @@
 # 003 — Layout Assistant · Requirements
 
-**Status:** Not started
+**Status:** Complete — verified 2026-11-08 on `gemini-3.5-flash-lite` (see tasks.md)
 **Depends on:** 001-ai-foundation (complete and verified)
 **Gemini capability:** function calling, multi-turn
 

@@ -251,6 +251,15 @@ when the first was made without `store: true`. If it fails, set `store: true` on
 and record that here. Do not assume either way, and do not silently set `store: true` "just in
 case" — storing prompts server-side is a data-retention decision worth making deliberately.
 
+**Verified 2026-11-06 (003/T2):** chaining works with `store` left **unset**. Against
+`gemini-3.5-flash-lite` via `api/ai/assistant.ts`, a `function_result` follow-up and then a second
+user turn ("make it herringbone" → results → "actually, go back to grid") each succeeded with
+`previous_interaction_id`, and the second turn acted on the first. So the assistant does not set
+`store`. Note what this does *not* establish: that nothing is retained. A referenceable prior
+interaction implies the provider keeps it for some period under its default; if retention matters
+for a deployment, check the provider's current policy for an unset `store` rather than reading
+"unset" as "not stored".
+
 ### `api/_lib/guard.ts`
 ```ts
 export function checkRateLimit(request: Request, route: string, nowMs?: number): void;  // throws 'rate_limited'

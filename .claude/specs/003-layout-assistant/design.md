@@ -49,7 +49,7 @@ Every tool is backed by an action that exists today in `client/src/store/tileFlo
 | `set_tile_orientation` | `orientation` | `setTileOrientation` | 381 | `horizontal` \| `vertical`; swaps W/H |
 | `set_optimization_weights` | `alpha?`, `beta?` | `setAlpha` / `setBeta` | 399 / 407 | each 0–1 |
 | `set_room_size` | `width_mm`, `height_mm` | `setRoomWidthMM` + `setRoomHeightMM` | 182 / 188 | **no-op when an outline is drawn** |
-| `set_reference_wall` | `wall_index \| null` | `setReferenceWall` | 316 | **no-op without an outline** |
+| `set_reference_wall` | `wall_number \| null` — the W-label's number, 1-based | `setReferenceWall` | 316 | **no-op without an outline**; `tools.ts` converts to the 0-based index |
 | `reset_to_rectangle` | — | `resetToRect` | 329 | discards the outline |
 | `read_layout_stats` | — | (read) | — | fresh `statsDto()`; the grounding tool |
 
@@ -168,7 +168,13 @@ to `{ id: step.id, name: step.name, arguments: step.arguments }`. Calls whose `n
 `TOOL_DECLARATIONS` are dropped **server-side too**, so the client whitelist is the second line of
 defence rather than the only one.
 
-## Prompt — `ASSISTANT_V1`
+## Prompt — `ASSISTANT_V1` (superseded by `ASSISTANT_V2`)
+
+`ASSISTANT_V2` (in force) changes three things, each from a failure seen in the browser: figures
+are quoted only from the snapshot's `display` block — the on-screen strings, formatted by the
+stats card's own helpers — walls are named by their W1-based labels, and the model changes only
+what was asked, pointing out conflicts instead of fixing them.
+
 
 - You are the layout assistant for a tile planner. The geometry engine computes every number; you
   never calculate tile counts, areas, waste or costs. Call `read_layout_stats` and quote it.

@@ -78,6 +78,24 @@ export interface ShapeDraft {
   points: Vec2[];
 }
 
+/**
+ * What `undoAiChange` puts back. Tile settings, alignment and weights have no
+ * history of their own — only outline edits do — so the assistant takes one
+ * snapshot per turn instead of growing a general undo system for a chat panel
+ * (003 AC-5.2).
+ *
+ * `plan` is carried because in plan mode the tile setters write into the plan
+ * (`patchActive`), and the top-level fields are only a view of its active room:
+ * restoring the view alone would be overwritten by the next plan commit.
+ */
+export interface AiSnapshot {
+  room: Room;
+  tileConfig: TileConfig;
+  alignment: AlignmentMode;
+  optimizationConfig: OptimizationConfig;
+  plan: Plan | null;
+}
+
 /** What undo restores: the single room, or the whole plan when there is one. */
 export interface HistoryEntry {
   room: Room;
@@ -171,6 +189,16 @@ export interface TileFlowState {
   optimizationConfig: OptimizationConfig;
   setAlpha: (a: number) => void;
   setBeta: (b: number) => void;
+
+  /**
+   * 003 — the state before the layout assistant's latest change, or null.
+   * One level only: enough for "put that back", which is what the panel offers.
+   */
+  aiSnapshot: AiSnapshot | null;
+  /** Record the current state; called before the assistant applies a turn's calls */
+  captureAiSnapshot: () => void;
+  /** Restore the recorded state and clear it */
+  undoAiChange: () => void;
 
   // Layout result (from worker)
   layout: LayoutResult | null;
@@ -785,6 +813,44 @@ export const useTileFlowStore = create<TileFlowState>()(
           ...get().optimizationConfig,
           weights: { ...get().optimizationConfig.weights, beta: b },
         },
+      });
+    },
+
+    // Layout assistant undo (003)
+    aiSnapshot: null,
+
+    captureAiSnapshot: () => {
+      const { room, tileConfig, alignment, optimizationConfig, plan } = get();
+      set({ aiSnapshot: { room, tileConfig, alignment, optimizationConfig, plan } });
+    },
+
+    undoAiChange: () => {
+      const { aiSnapshot: snap, plan, room } = get();
+      if (!snap) return;
+      set({ aiSnapshot: null });
+
+      // Converted to or from a floor plan since: the snapshot describes a
+      // different kind of state, and applying it would tear one half off.
+      if (Boolean(snap.plan) !== Boolean(plan)) return;
+
+      if (snap.plan) {
+        // The plan holds every room's settings, so this restores whatever the
+        // tools changed; `commitPlan` refreshes the active-room view from it.
+        commitPlan(snap.plan, { history: false });
+        return;
+      }
+
+      // Geometry changes join the outline history, so Ctrl+Z after an AI undo
+      // still steps through the room coherently.
+      if (JSON.stringify(room) !== JSON.stringify(snap.room)) {
+        pushHistory(room);
+        set({ draft: null, selectedWall: null });
+      }
+      set({
+        room: snap.room,
+        tileConfig: snap.tileConfig,
+        alignment: snap.alignment,
+        optimizationConfig: snap.optimizationConfig,
       });
     },
 
