@@ -40,7 +40,7 @@ other and can be built in any order; the order below is by demo impact.
 | 003 | [layout-assistant](003-layout-assistant/) | `feat/003-layout-assistant` | **Complete (12/12)** — verified in the browser 2026-11-08 on `gemini-3.5-flash-lite`; re-check on the default `gemini-3.8-flash` | `POST /api/ai/assistant` | tool calling, multi-turn |
 | 004 | [installation-brief](004-installation-brief/) | `feat/004-installation-brief` | **Complete (11/11)** — verified in the browser 2026-11-08 on `gemini-3.5-flash-lite`; re-check on the default `gemini-3.8-flash` | `POST /api/ai/brief` | streaming text |
 | 005 | [cost-estimator](005-cost-estimator/) | `feat/005-cost-estimator` | **Complete (11/11)** — verified in the browser 2026-11-08 on `gemini-3.5-flash-lite`; re-check on the default `gemini-3.8-flash` | `POST /api/ai/estimate` | structured output |
-| 006 | Demo narrative | `feat/006-demo-narrative` | In progress (3/8) — README done; GIF and `docs/DEMO.md` outstanding | — | — |
+| 006 | Demo narrative | `feat/006-demo-narrative` | In progress (6/8) — README, GIF and `docs/DEMO.md` done; the two deployed-demo checks are blocked (see Milestone 6) | — | — |
 | 007 | [upstream-resilience](007-upstream-resilience/) | `feat/007-upstream-resilience` | **Complete (8/8)** — provider refusals degrade to demo content | — | — |
 | 008 | [floor-plan](008-floor-plan/) | `feat/008-floor-plan` | **Complete (21/21)** — walls, derived rooms, per-room layouts, pattern groups; verified in browser and against Postgres | — | — |
 | 010 | [ux-onboarding](010-ux-onboarding/) | `feat/010-ux-onboarding` | **Complete (10/10)** — Start card & examples, one-gesture rooms, auto-rooms, toolbar & shortcuts, instruction line, stepped sidebar | — | — |
@@ -84,20 +84,27 @@ for 90 seconds.
       `001-ai-foundation/design.md`, the engine-computes/model-narrates rule, and one line per
       feature with the Gemini capability it uses (vision, tool calling, structured output,
       streaming).
-- [ ] Add the four AI routes to the API endpoint table in `README.md`. *(The two that exist —
-      `/api/ai/health` and `/api/ai/room-from-image` — are documented. Unticked until 003–005 ship
-      the other two.)*
+- [x] Add the four AI routes to the API endpoint table in `README.md`. *(All five are documented:
+      health, room-from-image, assistant, brief, estimate — plus the Features and AI sections.)*
 - [x] Update the Tech Stack table with `@google/genai` and Vercel Functions.
-- [ ] Record a short screen capture of photo → outline → optimized layout → brief; embed as a GIF
-      near the top of `README.md`.
-- [ ] Write `docs/DEMO.md`: a 3-minute walkthrough script — what to click, what to say about the
+- [x] Record a short screen capture of photo → outline → optimized layout → brief; embed as a GIF
+      near the top of `README.md`. *(`docs/demo.gif`, 0.24 MB, recorded in headless Chromium from
+      `docs/kitchen-plan.png` against the dev server.)*
+- [x] Write `docs/DEMO.md`: a 3-minute walkthrough script — what to click, what to say about the
       architecture at each step, and the two questions to expect ("why not let the model do the
       math?", "what stops a malicious image from driving your app?" — the answers are
       Constitution I and II).
 - [ ] Confirm the deployed demo works end-to-end with `GEMINI_API_KEY` set in Vercel project
       settings, and that it falls back to demo mode rather than erroring when the cap trips.
+      *Checked 2026-11-08: **fails.** Live `POST /api/ai/brief` returned 200 with an empty body
+      after 60.8 s — the deployed fast model, `gemini-3.8-flash`, opens the stream and never
+      writes. The fix is a setting: `GEMINI_MODEL_FAST=gemini-3.5-flash-lite` in Vercel, the model
+      003–005 were verified on. The cap trip was verified in dev (`AI_DAILY_CALL_BUDGET=0`), not on
+      the deployment — tripping it there means spending the day's budget.*
 - [ ] Confirm the deployed demo still works with the key *removed* — the planner must be fully
       functional for a visitor who arrives after the budget is spent.
+      *Needs Vercel project access to remove the key. The equivalent was verified in dev for every
+      AI feature (key set to a blank value): controls disabled with a reason, planner untouched.*
 
 ## Conventions
 
