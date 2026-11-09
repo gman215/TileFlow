@@ -45,6 +45,15 @@ other and can be built in any order; the order below is by demo impact.
 | 008 | [floor-plan](008-floor-plan/) | `feat/008-floor-plan` | **Complete (21/21)** — walls, derived rooms, per-room layouts, pattern groups; verified in browser and against Postgres | — | — |
 | 010 | [ux-onboarding](010-ux-onboarding/) | `feat/010-ux-onboarding` | **Complete (10/10)** — Start card & examples, one-gesture rooms, auto-rooms, toolbar & shortcuts, instruction line, stepped sidebar | — | — |
 | 009 | [wall-framing](009-wall-framing/) | `feat/009-wall-framing` | **Complete (14/14)** — studs, openings, junction backing, takeoff, elevations; verified in browser and against Postgres | — | — |
+| 011 | [layout-control](011-layout-control/) | `feat/011-layout-control` | Planned (1/13) — resizable sidebar, edit a wall's length on the wall, centre the layout on a feature (tub, cabinet, point) | — | — |
+| 012 | installer-output *(proposed)* | — | Proposed — dimensioned cut list, printable set-out sheet PDF, order by the box | — | — |
+| 013 | patterns-and-shapes *(proposed)* | — | Proposed — basketweave, chevron, windmill, Versailles, hexagon, checkerboard, ¼ offset, random plank; 33 % plank-offset warning | — | — |
+| 014 | wall-tiling *(proposed)* | — | Proposed — showers, tub surrounds, backsplashes as tiled elevations with openings | — | — |
+| 015 | ordering-accuracy *(proposed)* | — | Proposed — choosable buffer, offcut reuse, attic stock, boxes across surfaces | — | — |
+| 016 | shower-floors *(proposed)* | — | Proposed — drains, slope, envelope cuts, curbs, niches; movement joints (EJ171) | — | — |
+| 017 | borders-and-mixed *(proposed)* | — | Proposed — borders, feature strips, inlays, several tiles per room | — | — |
+| 018 | on-site-use *(proposed)* | — | Proposed — tablet/phone layout, offline PWA | — | — |
+| 019 | visuals *(proposed)* | — | Proposed — tile images, grout colour, customer PDF quote, 3D later | — | — |
 
 Update the Status column as specs complete. `/spec-status` reports unchecked tasks across all of
 them.
@@ -53,6 +62,11 @@ Every spec is built on its own branch, never on `main` — see
 [Constitution VIII](CONSTITUTION.md#viii-every-feature-is-built-on-its-own-branch). The branch name
 matches the spec directory name, and each spec's **T0** creates and switches to it. `main`
 auto-deploys the live demo, so it stays clean.
+
+## Next: from the competitive analysis
+
+See [`COMPETITIVE-ANALYSIS.md`](COMPETITIVE-ANALYSIS.md) — 11 competing tools compared for tile
+installation. Recommended order: 011 → 012 → 013 → 014 → 015 → 016 → 017 → 018 → 019.
 
 ## Feature summaries
 
