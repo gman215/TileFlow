@@ -11,6 +11,12 @@ A real-time tile layout optimizer that helps users plan tile installations by de
 
 **🔗 Live demo: [tile-flow-client.vercel.app](https://tile-flow-client.vercel.app/)**
 
+![A photo of a dimensioned kitchen plan becomes a room outline, is tiled by the engine, and gets a streamed installation brief](docs/demo.gif)
+
+*A photo of a floor plan → the proposed outline (15.70 m², island included) → the engine's layout →
+a streamed installation brief whose every figure is the stats card's. Recorded against the dev
+server; walkthrough in [docs/DEMO.md](docs/DEMO.md).*
+
 ---
 
 ## Getting started
@@ -49,6 +55,15 @@ The line under the toolbar always says what to do next, and **?** shows every sh
   your room until you press **Apply**, and one undo takes it back
 - **Honest confidence** — The model reports how sure it is and what it scaled from. Below 0.4 a
   warning shows; at 0 no proposal is offered at all
+- **Layout assistant** — "12×24 herringbone, penalize waste heavily" in the sidebar becomes three
+  changes made through the same store actions the buttons call, each shown as a chip, all undone by
+  one **Undo AI change**
+- **Installation brief** — a **Brief** button on the stats card streams a setting-out brief for the
+  installer: where to strike the first line, the cut list, sliver and herringbone warnings, and why
+  the order includes 10%. Every figure in it is the stats card's
+- **Cost estimate** — a materials and labour takeoff where the model supplies quantities and rates
+  with a stated basis, and the app does every multiplication; edit a price and the total updates
+  with no new request
 - **Degrades to a working app** — With no API key, no budget, or an unreachable model, the planner
   is completely unaffected and the AI panel explains itself in one line
 
@@ -165,7 +180,7 @@ tileflow/
 │   └── worker/          # Web Worker entry point — runs geometry off the main thread
 ├── api/                 # Vercel Functions — the only place the Gemini key is read
 │   ├── _lib/            # Client, prompts, schemas, request envelope, spend guards
-│   └── ai/              # One file per route: health, room-from-image
+│   └── ai/              # One file per route: health, room-from-image, assistant, brief, estimate
 ├── client/              # React + Vite SPA
 │   └── src/
 │       ├── components/  # Canvas (react-konva), Control panels, DimensionField, AI/
@@ -262,8 +277,8 @@ blocks drawing a room.
 |---|---|
 | No `GEMINI_API_KEY` | `503 config` — control disabled with a one-line reason |
 | Per-IP rate limit (10/min) | `429` with `Retry-After` |
-| Daily call budget spent | `200` + a labelled example outline |
-| **Provider refuses** (quota, billing, restricted key) | `200` + a labelled example outline |
+| Daily call budget spent | `200` + labelled example content (outline, reply, brief or estimate) |
+| **Provider refuses** (quota, billing, restricted key) | `200` + labelled example content |
 | Model times out, 5xxs, or returns junk | `502 upstream` — the room is left untouched |
 
 The fourth row is the one that takes work. Our own call budget and the provider's limits are
@@ -281,7 +296,7 @@ Models are environment variables, so changing one is a deployment setting rather
 |---|---|---|
 | `GEMINI_API_KEY` | — | Server-side only. Never prefix with `VITE_` |
 | `GEMINI_MODEL_VISION` | `gemini-3.1-flash-lite` | Reads the plan |
-| `GEMINI_MODEL_FAST` | `gemini-3.8-flash` | General text work |
+| `GEMINI_MODEL_FAST` | `gemini-3.8-flash` | Assistant, brief and estimate. All three were verified on `gemini-3.5-flash-lite` |
 | `AI_RATE_LIMIT_PER_MIN` | `10` | Per-IP token bucket |
 | `AI_DAILY_CALL_BUDGET` | `500` | Global daily cap; `0` forces demo mode |
 | `AI_UPSTREAM_COOLDOWN_MIN` | `15` | Back-off after a provider refusal; `0` disables |
@@ -290,10 +305,42 @@ The vision default is chosen on measurement, not version number: `gemini-3.1-fla
 ground-truth plan bit-exact 5/5 at roughly **a tenth** the cost of `gemini-3.8-flash`, while the
 newer `gemini-3.5-flash-lite` failed the same plan by returning raw pixel coordinates.
 
-### Planned
+### Layout assistant
 
-A layout assistant (tool calling over the store's own actions), a streamed installation brief, and a
-cost estimator are specified but not yet built — see `.claude/specs/`.
+`POST /api/ai/assistant` — Gemini function calling, multi-turn via `previous_interaction_id`.
+
+The application state is a Zustand store in the browser, so the loop is inverted: the route only
+translates prose into tool calls, and the **client** executes them against a fixed whitelist of
+ten tools, each backed by a store action that already existed. Arguments are Zod-validated before
+the store is touched, and every result reports the value *read back from the store*, so the model
+cannot announce a change that did not happen — ask for a 10 × 10 ft room while an L-shaped outline
+is drawn and it says the outline governs and offers to reset, rather than claiming success. One
+**Undo AI change** reverts the whole turn, in a single room or a floor plan.
+
+Replies quote figures only from a `display` block formatted by the stats card's own helpers:
+"You are looking at **27.0%** waste" is character-for-character what the card shows.
+
+### Installation brief
+
+`POST /api/ai/brief` — streamed text.
+
+The model receives numbers and returns prose; it never returns a number that was not in its input.
+Every figure arrives pre-formatted, and every yes/no that rests on arithmetic — is the smallest cut
+a sliver, does this tile fit herringbone — is decided by code first, so the model chooses how to say
+it, never whether it is true. An automated audit over a dozen generated briefs found no figure that
+was not in the input. A stream that dies mid-brief keeps its text, labelled incomplete, with a retry;
+a change to the layout marks the brief stale instead of silently refetching.
+
+### Cost estimate
+
+`POST /api/ai/estimate` — structured JSON output.
+
+The response schema has **no subtotal and no total field**: the model cannot supply what it is not
+asked for. It returns quantities and unit rates, each with a basis ("thinset at 2 lb/ft², 1/2 in
+notch"); the client forces the tile count and floor area to the engine's, drops any line without a
+basis or outside a per-area sanity bound (and says so), and computes every subtotal and the total
+in integer cents. Prices are session-only and never reach the database; the currency is a display
+symbol, never converted.
 
 ---
 
@@ -409,3 +456,6 @@ Vercel Functions under `api/ai/`, separate from the Express API above.
 |---|---|---|
 | `GET` | `/api/ai/health` | Whether AI is configured on this deployment, which models, and whether it is in demo mode. Never reveals anything about the key |
 | `POST` | `/api/ai/room-from-image` | Image (base64) + unit system → room outline proposal in millimetres, with `confidence` and `notes` |
+| `POST` | `/api/ai/assistant` | A message (or the results of the last calls) + layout snapshot → reply and tool calls for the client to run. Never mutates anything itself |
+| `POST` | `/api/ai/brief` | Layout snapshot + pre-formatted figures → a setting-out brief, streamed as `text/plain` |
+| `POST` | `/api/ai/estimate` | Layout snapshot + unit prices → line items (quantity, unit, unit cost, basis, source). No totals: the client computes them |
