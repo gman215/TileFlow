@@ -36,6 +36,7 @@ import { z, ZodError, type ZodType } from 'zod';
 import { ApiError } from './http.js';
 import type {
   AssistantMessageRequestDTO,
+  BriefRequestDTO,
   AssistantResultsRequestDTO,
   LayoutStatsDTO,
   RoomFromImageDTO,
@@ -412,3 +413,48 @@ type ResultsMatchDto =
     : never;
 const RESULTS_MATCH_DTO: ResultsMatchDto = true;
 void RESULTS_MATCH_DTO;
+
+// ─── 004 · installation brief ─────────────────────────────────────────────────
+//
+// No response pair: the brief is streamed prose, not structured output. What
+// is validated is the input — every string in it may be quoted to the user.
+
+const BRIEF_STRING = z.string().min(1).max(48).regex(/^[^\r\n]*$/);
+
+export const BriefIn = z
+  .object({
+    stats: LayoutStatsIn,
+    formatted: z
+      .object({
+        roomArea: BRIEF_STRING,
+        perimeter: BRIEF_STRING,
+        tileSize: BRIEF_STRING,
+        grout: BRIEF_STRING,
+        smallestCut: BRIEF_STRING,
+        waste: BRIEF_STRING,
+        orderQuantity: BRIEF_STRING,
+        fullCount: BRIEF_STRING,
+        cutCount: BRIEF_STRING,
+        totalCount: BRIEF_STRING,
+        wallCount: BRIEF_STRING,
+        holeCount: BRIEF_STRING,
+        pattern: BRIEF_STRING,
+        alignment: BRIEF_STRING,
+        referenceWall: z.string().regex(/^W\d{1,4}$/).nullable(),
+      })
+      .strict(),
+    sliverRisk: z.boolean(),
+    sliverThreshold: BRIEF_STRING,
+    system: z.enum(['metric', 'imperial']),
+  })
+  .strict();
+
+type BriefMatchesDto =
+  z.infer<typeof BriefIn> extends BriefRequestDTO
+    ? BriefRequestDTO extends z.infer<typeof BriefIn>
+      ? true
+      : never
+    : never;
+const BRIEF_MATCHES_DTO: BriefMatchesDto = true;
+void BRIEF_MATCHES_DTO;
+export type BriefInput = z.infer<typeof BriefIn>;

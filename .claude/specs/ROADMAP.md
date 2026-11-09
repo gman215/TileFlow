@@ -38,7 +38,7 @@ other and can be built in any order; the order below is by demo impact.
 | 001 | [ai-foundation](001-ai-foundation/) | `feat/001-ai-foundation` | **Complete (17/17)** | `GET /api/ai/health` | — |
 | 002 | [photo-to-room](002-photo-to-room/) | `feat/002-photo-to-room` | **Complete (12/12)** — verified against live model calls 2026-09-12 | `POST /api/ai/room-from-image` | vision + structured output |
 | 003 | [layout-assistant](003-layout-assistant/) | `feat/003-layout-assistant` | **Complete (12/12)** — verified in the browser 2026-11-08 on `gemini-3.5-flash-lite`; re-check on the default `gemini-3.8-flash` | `POST /api/ai/assistant` | tool calling, multi-turn |
-| 004 | [installation-brief](004-installation-brief/) | `feat/004-installation-brief` | Not started | `POST /api/ai/brief` | streaming text |
+| 004 | [installation-brief](004-installation-brief/) | `feat/004-installation-brief` | **Complete (11/11)** — verified in the browser 2026-11-08 on `gemini-3.5-flash-lite`; re-check on the default `gemini-3.8-flash` | `POST /api/ai/brief` | streaming text |
 | 005 | [cost-estimator](005-cost-estimator/) | `feat/005-cost-estimator` | Not started | `POST /api/ai/estimate` | structured output |
 | 006 | Demo narrative | `feat/006-demo-narrative` | In progress (3/8) — README done; GIF and `docs/DEMO.md` outstanding | — | — |
 | 007 | [upstream-resilience](007-upstream-resilience/) | `feat/007-upstream-resilience` | **Complete (8/8)** — provider refusals degrade to demo content | — | — |
