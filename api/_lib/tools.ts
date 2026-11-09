@@ -149,18 +149,19 @@ export const TOOL_DECLARATIONS: readonly ToolDeclaration[] = [
     name: 'set_reference_wall',
     description:
       'Square the tile grid to one wall of a drawn outline, anchored on its midpoint — how a ' +
-      'floor is actually set out. Walls are numbered from 0 in drawing order. Pass null to go ' +
-      'back to squaring to the room. Only works when a drawn outline exists.',
+      'floor is actually set out. Walls are named W1, W2, W3… in the wall table, exactly as the ' +
+      'user sees them; pass the number from that label, so "wall 2" or "W2" is 2. Pass null to ' +
+      'go back to squaring to the room. Only works when a drawn outline exists.',
     parameters: {
       type: 'object',
       properties: {
-        wall_index: {
+        wall_number: {
           type: ['integer', 'null'],
-          minimum: 0,
-          description: 'Zero-based wall index, or null to clear the reference wall.',
+          minimum: 1,
+          description: 'The number in the wall\'s label: 2 for W2. Or null to clear it.',
         },
       },
-      required: ['wall_index'],
+      required: ['wall_number'],
     },
   },
   {
@@ -177,7 +178,8 @@ export const TOOL_DECLARATIONS: readonly ToolDeclaration[] = [
     description:
       'Read the current, freshly computed layout figures — tile counts, area, waste, cut ' +
       'sizes. Call this before quoting any number, and after making changes, rather than ' +
-      'relying on an earlier snapshot.',
+      'relying on an earlier snapshot. Quote figures from its `display` block, which is ' +
+      'formatted exactly as the user sees it on screen.',
     parameters: { type: 'object', properties: {} },
   },
 ];

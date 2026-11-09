@@ -5,9 +5,8 @@ import { useAiAvailability } from '../../hooks/useAiAvailability';
 import { AiError } from '../../api/ai';
 import type { ToolOutcome } from '../../ai/tools';
 import {
-  formatDisplayFromMM,
+  formatWithUnit,
   groutDisplay,
-  isImperialUnit,
   roomDisplay,
   tileDisplay,
   type FieldDisplay,
@@ -22,10 +21,7 @@ const MAX_MESSAGE = 2000;
 
 /** A length in the unit that field uses in the sidebar, with its suffix. */
 function fmt(mm: unknown, d: FieldDisplay): string {
-  if (typeof mm !== 'number') return '?';
-  const text = formatDisplayFromMM(mm, d.unit, d.imperialFormat);
-  // Imperial formats carry their own unit; metric ones are bare numbers.
-  return isImperialUnit(d.unit) ? text : `${text} ${d.unit}`;
+  return typeof mm === 'number' ? formatWithUnit(mm, d) : '?';
 }
 
 /** What each tool is called on a chip — the sidebar's words, not the tool's. */
@@ -79,10 +75,8 @@ function chipText(o: ToolOutcome, system: MeasurementSystem): string {
       return `${label} → ${fmt(r.width_mm, d)} × ${fmt(r.height_mm, d)}`;
     }
     case 'set_reference_wall':
-      // W1-based, matching the wall table — the tools number from 0.
-      return typeof r.reference_wall === 'number'
-        ? `Square to W${r.reference_wall + 1}`
-        : 'Squared to the room';
+      // Already the wall table's label ("W3").
+      return typeof r.reference_wall === 'string' ? `Square to ${r.reference_wall}` : 'Squared to the room';
     case 'reset_to_rectangle':
       return `${label} → rectangle`;
     case 'read_layout_stats':

@@ -293,6 +293,7 @@ void MIRROR_MATCHES_DTO;
  */
 const MM = z.number().finite().min(0).max(1e9);
 const COUNT = z.number().int().min(0).max(1e7);
+const DISPLAY = z.string().max(48).regex(/^[^\r\n]*$/);
 
 export const LayoutStatsIn = z.object({
   system: z.enum(['metric', 'imperial']),
@@ -303,7 +304,7 @@ export const LayoutStatsIn = z.object({
     perimeterMm: MM,
     wallCount: COUNT,
     holeCount: COUNT,
-    referenceWall: z.number().int().min(0).nullable(),
+    referenceWall: z.string().regex(/^W\d{1,4}$/).nullable(),
     isDrawn: z.boolean(),
   }),
   tile: z.object({
@@ -321,6 +322,20 @@ export const LayoutStatsIn = z.object({
     smallestCutPieceMm2: z.number().finite().min(0).max(1e15),
     roomAreaMm2: z.number().finite().min(0).max(1e15),
     orderQuantity: COUNT,
+  }),
+  // Display strings may be quoted to the user verbatim, so they are held to
+  // a short, printable shape: no line breaks, nothing a model could read as
+  // a new instruction block.
+  display: z.object({
+    roomSize: DISPLAY,
+    area: DISPLAY,
+    tileSize: DISPLAY,
+    grout: DISPLAY,
+    orderQuantity: DISPLAY,
+    waste: DISPLAY,
+    fullTiles: DISPLAY,
+    cutTiles: DISPLAY,
+    totalTiles: DISPLAY,
   }),
 });
 

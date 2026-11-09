@@ -43,8 +43,13 @@ export interface LayoutStatsDTO {
     wallCount: number;
     /** Cut-outs (islands, columns, tubs) that are not tiled. */
     holeCount: number;
-    /** Index of the wall the layout is squared to, or null. */
-    referenceWall: number | null;
+    /**
+     * The wall the layout is squared to, by its label in the wall table
+     * ("W3"), or null. A label, not an index: this shape is what a model
+     * reads, and a model told "index 2" names it to the user as "wall 2" —
+     * which on screen is W2, a different wall.
+     */
+    referenceWall: string | null;
     /** False when the room is still a plain W × H rectangle. */
     isDrawn: boolean;
   };
@@ -69,6 +74,29 @@ export interface LayoutStatsDTO {
     roomAreaMm2: number;
     /** Tiles to buy, including the 10% buffer — what StatsPanel shows. */
     orderQuantity: number;
+  };
+
+  /**
+   * The figures above as the user sees them on screen, in their units —
+   * formatted by the same helpers as the sidebar and the stats card, so a
+   * model that quotes one quotes exactly what is displayed (Constitution I).
+   * The raw fields are for code; these are for saying.
+   */
+  display: {
+    /** "12 ft 0 in × 10 ft 0 in" / "3.66 m × 3.05 m" — the bounding box when drawn. */
+    roomSize: string;
+    /** "120.0 ft²" / "11.15 m²" — the stats card's Area. */
+    area: string;
+    /** "12 in × 24 in" / "30 cm × 60 cm" */
+    tileSize: string;
+    /** "1/8 in" / "3 mm" */
+    grout: string;
+    /** The stats card's hero figures and counts. */
+    orderQuantity: string;
+    waste: string;
+    fullTiles: string;
+    cutTiles: string;
+    totalTiles: string;
   };
 }
 

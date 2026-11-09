@@ -112,7 +112,7 @@
       mode, using `page.route` stubs for responses the real route would never send. Also added a
       45 s client-side trip timeout so a hung request cannot wedge the panel (measured: 46 s).*
 
-- [ ] **T11 — Full spec verification.** Run the block below and record the result.
+- [x] **T11 — Full spec verification.** Run the block below and record the result.
 
 ---
 
@@ -146,3 +146,38 @@ Requires `npm run dev` and a `GEMINI_API_KEY`.
 13. **429 / offline** — layout untouched, plain message, no wedged spinner. (AC-6.4)
 14. **Types and tests** — `npm run typecheck:api`, `cd client && npx tsc --noEmit`,
     `npm test --workspace @tileflow/geometry` all clean.
+
+### Result — 2026-11-08
+
+Run against `vite` dev in headless Chromium (Playwright), on `gemini-3.5-flash-lite` via
+`GEMINI_MODEL_FAST`: the default `gemini-3.8-flash` was still timing out (66 s) while both lite
+models answered in ~1.4 s. **Re-run items 1–8 on the default model once it recovers**, or adopt
+the lite model as the default.
+
+| # | Result |
+|---|---|
+| 0 | `feat/003-layout-assistant` |
+| 1 | "Tile size → 12 in × 24 in"; sidebar fields 12 in / 24 in; canvas recomputed |
+| 2 | Three chips in one turn; sidebar shows 12 × 24, Herringbone, Penalize waste 0.3 → 1.0 |
+| 3 | Explanation of alpha, no chips, canvas and pattern unchanged |
+| 4 | Called `read_layout_stats`; "You are looking at 27.0% waste." — the stats card's figure exactly; area quoted as "40.0 ft²" |
+| 5 | L-shaped kitchen: "The room has a drawn outline, so its dimensions are read-only. Would you like to reset…?" — room unchanged |
+| 6 | Plain rectangle: reports a reference wall needs an outline; struck-through chip. With an outline, "wall 2" → "Square to W2" |
+| 7 | Herringbone → "actually, go back to grid" → Grid; second turn chained by id, first message not resent |
+| 8 | One click restored Grid and 12 × 12 in; canvas recomputed |
+| 9 | `delete_project` stub: not dispatched, logged, model told `unknown_tool`, transcript notes it |
+| 10 | `grout_mm: 9999` stub: Zod rejected before the store; chip and model told "≤ 100" |
+| 11 | Always-a-call stub: stopped at 4 requests; "3 changes applied; 1 more requested but not made" |
+| 12 | Key unset: panel disabled with reason; sidebar pattern still recomputes; no errors |
+| 13 | 429 (with retry time), 502, offline, partial failure and a 45 s hang: plain messages, layout untouched, no wedged spinner |
+| 14 | `typecheck:api` and client `tsc` clean; geometry 181/181 |
+
+Review gate: slow 3G passes (asking before the first layout gets a plain "still being computed"
+refusal; once it lands a full exchange completes in 4.5 s, no page errors); the key-leak grep is
+clean; `useLayoutWorker.ts` is unchanged.
+
+Two fixes went in before this run, each from a browser finding: the snapshot gained a `display`
+block of on-screen strings (replies had quoted "22.852832294220104%"), and walls are addressed by
+their W1-based labels (the model had squared "wall 2" to W3). Both shipped with `ASSISTANT_V2`,
+which also stops the model changing settings it was not asked to change.
+

@@ -71,6 +71,11 @@ function tool<A>(args: ZodType<A>, run: (args: A) => ToolResult): ToolImpl<A> {
 
 const store = () => useTileFlowStore.getState();
 
+/** A store wall index as the wall table labels it: 2 → "W3". */
+function wallLabel(index: number | undefined | null): string | null {
+  return index == null ? null : `W${index + 1}`;
+}
+
 /** The current room's extents. For an outline, its bounding box. */
 function roomNow() {
   const { width, height } = store().room;
@@ -197,7 +202,7 @@ export const TOOL_MAP = {
   ),
 
   set_reference_wall: tool(
-    z.object({ wall_index: z.number().int().min(0).max(1000).nullable() }).strict(),
+    z.object({ wall_number: z.number().int().min(1).max(1000).nullable() }).strict(),
     (a) => {
       // `setReferenceWall` early-returns without an outline (AC-4.2): a plain
       // rectangle is squared to its own bounding box, and has no walls to pick.
@@ -217,18 +222,22 @@ export const TOOL_MAP = {
       // Checked here rather than left to the store, which would accept any
       // index and square the grid to a wall that does not exist (AC-4.3).
       const { wallCount } = summarizeShape(shape);
-      if (a.wall_index !== null && a.wall_index >= wallCount) {
+      if (a.wall_number !== null && a.wall_number > wallCount) {
         return {
           ok: false,
           reason: 'wall_out_of_range',
-          message: `This outline has ${wallCount} walls, numbered 0 to ${wallCount - 1}.`,
-          valid_range: [0, wallCount - 1],
-          reference_wall: shape.referenceWall ?? null,
+          message: `This outline has ${wallCount} walls, W1 to W${wallCount}.`,
+          valid_range: ['W1', `W${wallCount}`],
+          reference_wall: wallLabel(shape.referenceWall),
         };
       }
-      store().setReferenceWall(a.wall_index);
-      const reference_wall = store().room.shape?.referenceWall ?? null;
-      return { ok: reference_wall === a.wall_index, reference_wall, wall_count: wallCount };
+      // The one place a wall label becomes a store index. Everything the model
+      // sees — this tool, its result, the snapshot — speaks in the wall table's
+      // labels, because "wall 2" to a user is W2, not index 2.
+      store().setReferenceWall(a.wall_number === null ? null : a.wall_number - 1);
+      const reference_wall = wallLabel(store().room.shape?.referenceWall);
+      const asked = a.wall_number === null ? null : `W${a.wall_number}`;
+      return { ok: reference_wall === asked, reference_wall, wall_count: wallCount };
     }
   ),
 

@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import { ORDER_BUFFER } from '../../api/ai';
+import { formatArea, formatWaste } from '../../utils/measurements';
 
-const MM2_PER_M2 = 1_000_000;
-const MM2_PER_FT2 = 92_903.04;
 
 // Shared translucent-dark surface for canvas-floating chrome.
 const CARD_STYLE: React.CSSProperties = {
@@ -55,10 +54,8 @@ export default function StatsPanel() {
   // Shared with statsDto() so the figure shown here and the figure a model is
   // told are the same number.
   const buyCount = Math.ceil(totalTiles * ORDER_BUFFER);
-  const imperial = system === 'imperial';
-  const roomAreaDisplay = imperial
-    ? `${(layout.roomArea / MM2_PER_FT2).toFixed(1)} ft²`
-    : `${(layout.roomArea / MM2_PER_M2).toFixed(2)} m²`;
+  // Shared with statsDto() for the same reason.
+  const roomAreaDisplay = formatArea(layout.roomArea, system);
 
   const waste = layout.wastePercentage;
   const wasteColor = waste > 10 ? '#F87171' : '#4ADE80';
@@ -83,7 +80,7 @@ export default function StatsPanel() {
           <span className="font-mono font-medium">{buyCount}</span> to buy
         </span>
         <span style={{ color: wasteColor }}>
-          <span className="font-mono">{waste.toFixed(1)}%</span> waste
+          <span className="font-mono">{formatWaste(waste)}</span> waste
         </span>
         <span className="text-white/50">▴</span>
       </button>
@@ -118,7 +115,7 @@ export default function StatsPanel() {
             className="font-mono text-[32px] leading-none font-medium"
             style={{ color: wasteColor }}
           >
-            {waste.toFixed(1)}%
+            {formatWaste(waste)}
           </div>
           <div className="mt-1.5 text-[11px] text-white/55" title="Tile you pay for but cut away, as a share of the floor">
             Waste %
