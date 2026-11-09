@@ -61,13 +61,13 @@ feature cannot be developed locally. That is the reason the requirement exists i
     perimeter: string;       // "40 ft 0 in"
     tileSize: string;        // "12 in × 24 in"
     grout: string;           // "1/8 in"
-    smallestCut: string;     // "0.4 ft²"
+    smallestCut: string;     // "58 in²" / "37 cm²" — small-area units: in ft² a sliver reads "0.0 ft²"
     waste: string;           // "8.4%"
     orderQuantity: string;   // "143"
     fullCount: string; cutCount: string; totalCount: string;
     wallCount: string; holeCount: string;
     pattern: string;         // "Herringbone"  — the UI's label, not the enum
-    alignment: string;       // "Center tile"
+    alignment: string;       // "Centre a tile" — the sidebar's label (010 redesign)
     referenceWall: string | null;  // "W3"
   };
   system: 'metric' | 'imperial';

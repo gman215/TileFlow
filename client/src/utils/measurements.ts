@@ -234,6 +234,18 @@ export function formatArea(mm2: number, system: MeasurementSystem): string {
     : `${(mm2 / MM2_PER_M2).toFixed(2)} m²`;
 }
 
+/**
+ * A small area — a cut piece — in in² / cm². Whole units, or one decimal under
+ * ten so a genuine sliver never rounds to nothing. Not ft²/m², where a 5 in²
+ * offcut would read "0.0 ft²". Nothing on screen shows this figure today, so
+ * there is no display to match; it is chosen to be truthful when it is small.
+ */
+export function formatSmallArea(mm2: number, system: MeasurementSystem): string {
+  const v = system === 'imperial' ? mm2 / 645.16 : mm2 / 100;
+  const unit = system === 'imperial' ? 'in²' : 'cm²';
+  return `${v < 10 ? v.toFixed(1) : Math.round(v).toString()} ${unit}`;
+}
+
 /** Waste as the stats card shows it: one decimal, with the percent sign. */
 export function formatWaste(pct: number): string {
   return `${pct.toFixed(1)}%`;

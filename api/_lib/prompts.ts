@@ -265,8 +265,73 @@ STYLE
 
 - A few plain sentences. No markdown headings, no bullet lists unless the user asks for steps.`;
 
-/** Filled by 004-installation-brief / T3. */
-export const BRIEF_V1 = '';
+/**
+ * 004-installation-brief. Engine figures in, a setting-out brief out.
+ *
+ * Unlike 002 and 003 there is no carve-out from rule 1 of the common preamble:
+ * this feature exists to show that the model can be useful while contributing
+ * nothing numeric. Every figure arrives pre-formatted in `figures`; every
+ * yes/no judgement that rests on arithmetic — is the smallest cut a sliver,
+ * does this tile fit herringbone — arrives already decided by code. The model
+ * chooses words and structure, never facts.
+ *
+ * The input shape is built by `api/ai/brief.ts` (`briefFacts`).
+ */
+export const BRIEF_V1 = `Your task: write a setting-out brief for a tile installer, from a finished layout computed by a
+geometry engine. It is what a tiler would write on the back of the plan.
+
+NUMBERS — read this first
+
+- Never compute, derive, estimate, round, convert or adjust a number. Every figure you write
+  must appear character for character in "figures" in the input, in the units given there. If
+  the sentence you want needs a figure that is not there, leave the sentence out.
+- Never write a cost, a price, a rate or a currency symbol. Costs are a separate feature.
+- The yes/no facts in the input ("sliverRisk", "herringboneMismatch") were decided by the
+  engine. Never second-guess them and never decide them yourself.
+
+INPUT
+
+A JSON object: "figures" (display strings: tile size, grout, counts, waste, order quantity,
+room area, perimeter, wall and cut-out counts, smallest cut, pattern, alignment, reference
+wall), "alignmentMode" (optimize, center-tile or center-grout), "sliverRisk" and
+"sliverThreshold", "herringboneMismatch", and "isDrawn" (false for a plain rectangle).
+
+SECTIONS, in this order, each a "## " heading
+
+## Setting out
+Where to strike the first line, following "alignmentMode":
+- optimize: the engine chose the grid position that scored best; strike lines from that
+  computed grid rather than from the room centre.
+- center-tile: a full tile is centred on the anchor; mark the centre and work out from it.
+- center-grout: a grout joint runs through the anchor; strike the first line there.
+When "referenceWall" is set, the anchor is that wall's midpoint and lines run parallel to that
+wall — say so, naming the wall exactly as given ("W3"), because that is how a floor is really set
+out. Otherwise the anchor is the room centre.
+
+## Cut list
+How many cut tiles and how many full ones, quoting the counts; that cuts fall around the
+perimeter and at any cut-outs; and what to expect at the edges. Quote the smallest cut.
+When "holeCount" is not "0", say the cut-outs are excluded from the counts and the area.
+
+## Watch out for
+- When "sliverRisk" is true: the smallest cut is under a third of a tile ("sliverThreshold") —
+  thin, fragile to cut and obvious on the finished floor. Suggest trying a different alignment
+  or nudging the grid. When it is false, do not raise slivers.
+- When "herringboneMismatch" is true: herringbone only fits when the tile's length plus grout is
+  twice its width plus grout; with this tile the joints will drift. Suggest a 2:1 tile.
+- 45° diagonal: more perimeter offcuts and more waste than a grid.
+- Offset patterns: choose the joint direction deliberately before the first row.
+Only include points that apply to this layout. If none do, say the layout has no special
+hazards in one sentence.
+
+## Ordering
+Quote the order quantity and say it already includes a 10% allowance, for breakage, future
+repairs and matching the dye lot. Do not suggest a different percentage.
+
+STYLE
+
+Markdown with short sections and short bullet lists, readable on a phone on site. Under 400
+words. No title, no preamble, no sign-off.`;
 
 /** Filled by 005-cost-estimator / T2. */
 export const ESTIMATE_V1 = '';

@@ -1,6 +1,6 @@
 # 004 — Installation Brief · Requirements
 
-**Status:** Not started
+**Status:** Complete — verified 2026-11-08 on `gemini-3.5-flash-lite` (see tasks.md)
 **Depends on:** 001-ai-foundation (complete and verified)
 **Gemini capability:** streaming text, grounded on engine output
 

@@ -19,6 +19,8 @@
 
 import type {
   AiHealthDTO,
+  BriefFormattedDTO,
+  BriefRequestDTO,
   AssistantRequestDTO,
   AssistantResponseDTO,
   LayoutStatsDTO,
@@ -27,9 +29,13 @@ import type {
   RoomFromImageRequestDTO,
 } from '@api/_lib/types';
 import { rectShape, summarizeShape } from '@tileflow/geometry';
+// The sidebar's own label tables, so the brief says what the buttons say.
+import { PATTERNS } from '../components/Controls/TilePanel';
+import { ALIGNMENTS } from '../components/Controls/OptimizationPanel';
 import { useTileFlowStore } from '../store/tileFlowStore';
 import {
   formatArea,
+  formatSmallArea,
   formatWaste,
   formatWithUnit,
   groutDisplay,
@@ -111,7 +117,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export async function* streamText(
   path: string,
   body: unknown,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  /** Sees the response once headers arrive — e.g. a demo-mode flag — before any text. */
+  onResponse?: (res: Response) => void
 ): AsyncGenerator<string> {
   let res: Response;
   try {
@@ -127,6 +135,7 @@ export async function* streamText(
   }
 
   if (!res.ok) throw await toAiError(res);
+  onResponse?.(res);
   if (!res.body) return;
 
   const reader = res.body.getReader();
@@ -147,6 +156,66 @@ export async function* streamText(
     signal?.removeEventListener('abort', onAbort);
     reader.releaseLock();
   }
+}
+
+/**
+ * 004 — every figure the installation brief may state, as display strings in
+ * the user's units (AC-1.1, AC-1.3).
+ *
+ * A pure function of the snapshot rather than a second read of the store: the
+ * brief is formatted from exactly the `LayoutStatsDTO` sent with it, so the two
+ * cannot describe different layouts. Figures the stats card also shows are
+ * taken from the snapshot's `display` block, which the card's own helpers
+ * produced — identical to the screen by construction, not by care (AC-1.5).
+ */
+export function formatForBrief(stats: LayoutStatsDTO): BriefFormattedDTO {
+  const { system, room, tile, layout, display } = stats;
+  return {
+    roomArea: display.area,
+    perimeter: formatWithUnit(room.perimeterMm, roomDisplay(system)),
+    tileSize: display.tileSize,
+    grout: display.grout,
+    smallestCut: formatSmallArea(layout.smallestCutPieceMm2, system),
+    waste: display.waste,
+    orderQuantity: display.orderQuantity,
+    fullCount: display.fullTiles,
+    cutCount: display.cutTiles,
+    totalCount: display.totalTiles,
+    wallCount: String(room.wallCount),
+    holeCount: String(room.holeCount),
+    // Fall back to the raw value rather than throwing: a pattern added to the
+    // engine before its label exists should still produce a brief.
+    pattern: PATTERNS.find((p) => p.value === tile.pattern)?.label ?? tile.pattern,
+    alignment: ALIGNMENTS.find((a) => a.value === tile.alignment)?.label ?? tile.alignment,
+    referenceWall: room.referenceWall,
+  };
+}
+
+/**
+ * 004 — a smallest cut under a third of a tile: thin, fragile to cut and
+ * obvious on the finished floor. Decided here from engine figures, never by
+ * the model (AC-2.3). No cuts at all, or a zero-area "cut", is not a sliver.
+ */
+export function sliverRisk(stats: LayoutStatsDTO): boolean {
+  const tileAreaMm2 = stats.tile.widthMm * stats.tile.heightMm;
+  const smallest = stats.layout.smallestCutPieceMm2;
+  return stats.layout.cutTileCount > 0 && smallest > 0 && smallest < tileAreaMm2 / 3;
+}
+
+/**
+ * The whole brief request for the layout on screen, or null when there is
+ * none to describe (AC-4.1) — the button is disabled in that case anyway.
+ */
+export function buildBriefRequest(): BriefRequestDTO | null {
+  const stats = statsDto();
+  if (!stats) return null;
+  return {
+    stats,
+    formatted: formatForBrief(stats),
+    sliverRisk: sliverRisk(stats),
+    sliverThreshold: formatSmallArea((stats.tile.widthMm * stats.tile.heightMm) / 3, stats.system),
+    system: stats.system,
+  };
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -170,6 +239,21 @@ export const ai = {
    * rethrows `AbortError` rather than an `AiError`, so the caller can tell
    * "we stopped this" from "this failed" (AC-5.2).
    */
+  /**
+   * 004 — stream an installation brief for `body`, chunk by chunk (AC-3.2).
+   *
+   * Aborting cancels the reader, so text stops at once and the server stops
+   * spending tokens (AC-3.3); the iteration then simply ends — the caller tells
+   * "we stopped this" from "this finished" by its own signal. A connection that
+   * dies mid-brief throws from the iteration instead, with the text so far
+   * already yielded (AC-3.4). `onDemo` fires before the first chunk when the
+   * server sent its canned brief (AC-4.6).
+   */
+  brief: (body: BriefRequestDTO, signal?: AbortSignal, onDemo?: () => void): AsyncIterable<string> =>
+    streamText('/brief', body, signal, (res) => {
+      if (res.headers.get('X-Demo-Mode') === 'true') onDemo?.();
+    }),
+
   roomFromImage: (body: RoomFromImageRequestDTO, signal?: AbortSignal) =>
     request<RoomFromImageDTO>('/room-from-image', {
       method: 'POST',

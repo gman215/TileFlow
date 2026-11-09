@@ -148,6 +148,64 @@ export interface RoomFromImageDTO extends DemoFlagged {
   detectedSystem: 'metric' | 'imperial' | 'unknown';
 }
 
+// ─── 004 · installation brief ─────────────────────────────────────────────────
+
+/**
+ * Every figure the brief may state, already formatted in the user's units —
+ * the model is handed "8.4%", never 8.4237 and a unit flag, so it has nothing
+ * to convert and no reason to compute (Constitution I, 004 AC-1.3).
+ *
+ * Built by `formatForBrief()` from the same `LayoutStatsDTO` sent alongside it.
+ * Strings shared with the stats card come from its `display` block, so they
+ * are identical to what is on screen by construction (AC-1.5).
+ */
+export interface BriefFormattedDTO {
+  /** "96.0 ft²" — the stats card's Area. */
+  roomArea: string;
+  /** "40 ft 0 in" / "12.20 m" */
+  perimeter: string;
+  /** "12 in × 24 in" */
+  tileSize: string;
+  /** "1/8 in" */
+  grout: string;
+  /**
+   * "58 in²" / "37 cm²" — small-area units, not ft²/m²: the figure matters most
+   * when it is a sliver, and a sliver in ft² to one decimal reads "0.0 ft²".
+   */
+  smallestCut: string;
+  /** "8.4%" */
+  waste: string;
+  /** "143" — includes the 10% buffer, as the stats card's Order to buy. */
+  orderQuantity: string;
+  fullCount: string;
+  cutCount: string;
+  totalCount: string;
+  wallCount: string;
+  holeCount: string;
+  /** The sidebar's label: "Herringbone", "½ Offset" — not the enum value. */
+  pattern: string;
+  /** The sidebar's label: "Least waste", "Centre a tile", "Centre a joint". */
+  alignment: string;
+  /** The wall table's label, "W3", or null when squared to the room. */
+  referenceWall: string | null;
+}
+
+/**
+ * `POST /api/ai/brief`. Numbers in, prose out: everything the model may state
+ * is in `formatted`, and whether to warn about slivers is decided here, by the
+ * client, from the engine's figures — the model chooses how to say it, never
+ * whether it is true (AC-2.3).
+ */
+export interface BriefRequestDTO {
+  stats: LayoutStatsDTO;
+  formatted: BriefFormattedDTO;
+  /** True when the smallest cut is under a third of a tile. */
+  sliverRisk: boolean;
+  /** A third of a tile, formatted like `smallestCut` — the threshold the warning is measured against. */
+  sliverThreshold: string;
+  system: MeasurementSystem;
+}
+
 // ─── 003 · assistant ──────────────────────────────────────────────────────────
 
 /**

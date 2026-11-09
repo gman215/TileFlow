@@ -2,10 +2,13 @@ import React, { useState } from 'react';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import { ORDER_BUFFER } from '../../api/ai';
 import { formatArea, formatWaste } from '../../utils/measurements';
+import { useAiAvailability } from '../../hooks/useAiAvailability';
+import BriefPanel from '../AI/BriefPanel';
 
 
-// Shared translucent-dark surface for canvas-floating chrome.
-const CARD_STYLE: React.CSSProperties = {
+// Shared translucent-dark surface for canvas-floating chrome (the brief drawer
+// uses it too, so the two read as one family).
+export const CARD_STYLE: React.CSSProperties = {
   background: 'rgba(36,35,33,.86)',
   backdropFilter: 'blur(8px)',
   WebkitBackdropFilter: 'blur(8px)',
@@ -38,15 +41,46 @@ export default function StatsPanel() {
   const system = useTileFlowStore((s) => s.system);
   const isComputing = useTileFlowStore((s) => s.isComputing);
   const computeTimeMs = useTileFlowStore((s) => s.computeTimeMs);
+  const [briefOpen, setBriefOpen] = useState(false);
+  const { configured, loading, reason } = useAiAvailability();
+
+  // Why the Brief button is off, or null when it is on (004 AC-4.1, AC-4.5). A
+  // brief of a layout that does not exist yet, or is about to change, would
+  // describe something that is not on screen.
+  const briefBlocked = !layout
+    ? 'No layout to describe yet.'
+    : isComputing
+      ? 'Wait for the layout to finish computing.'
+      : loading
+        ? 'Checking whether AI is available…'
+        : !configured
+          ? reason
+          : null;
+
+  const briefButton = (
+    <button
+      onClick={() => setBriefOpen(true)}
+      disabled={briefBlocked !== null}
+      title={briefBlocked ?? 'A setting-out brief for the installer, from these figures'}
+      className="rounded-md border border-white/15 px-2 py-0.5 text-[11px] font-medium text-white/85 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+    >
+      Brief
+    </button>
+  );
+  const drawer = briefOpen && <BriefPanel onClose={() => setBriefOpen(false)} />;
 
   if (!layout) {
     return (
-      <div
-        className="absolute bottom-3 left-3 z-10 rounded-xl px-4 py-3 text-xs text-white/70"
-        style={CARD_STYLE}
-      >
-        {isComputing ? 'Computing…' : 'No layout computed yet.'}
-      </div>
+      <>
+        <div
+          className="absolute bottom-3 left-3 z-10 flex items-center gap-3 rounded-xl px-4 py-3 text-xs text-white/70"
+          style={CARD_STYLE}
+        >
+          {isComputing ? 'Computing…' : 'No layout computed yet.'}
+          {briefButton}
+        </div>
+        {drawer}
+      </>
     );
   }
 
@@ -70,6 +104,7 @@ export default function StatsPanel() {
 
   if (collapsed) {
     return (
+      <>
       <button
         onClick={toggle}
         title="Show the full stats"
@@ -84,10 +119,13 @@ export default function StatsPanel() {
         </span>
         <span className="text-white/50">▴</span>
       </button>
+      {drawer}
+      </>
     );
   }
 
   return (
+    <>
     <div
       className="absolute bottom-3 left-3 z-10 rounded-xl p-4 text-white"
       style={CARD_STYLE}
@@ -134,7 +172,10 @@ export default function StatsPanel() {
             </span>
           </React.Fragment>
         ))}
+        <span className="ml-auto pl-2">{briefButton}</span>
       </div>
     </div>
+    {drawer}
+    </>
   );
 }
