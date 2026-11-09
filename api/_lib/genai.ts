@@ -25,9 +25,15 @@ export type ModelRole = 'fast' | 'vision' | 'cheap';
  * Note that newer is not better here: `gemini-3.5-flash-lite` failed the same
  * plan by returning raw pixel coordinates instead of applying the printed scale.
  * See 007-upstream-resilience/design.md for the measurements.
+ *
+ * The fast default followed the same rule (006). The assistant, brief and
+ * estimator were each verified end to end on `gemini-3.5-flash-lite`, answering
+ * in ~1–2 s, while `gemini-3.8-flash` spent days returning 503 "high demand",
+ * timing out, or — on the live deployment — opening a stream and writing
+ * nothing for 60 s. Set GEMINI_MODEL_FAST=gemini-3.8-flash to revert.
  */
 const MODEL_ENV: Record<ModelRole, { env: string; fallback: string }> = {
-  fast: { env: 'GEMINI_MODEL_FAST', fallback: 'gemini-3.8-flash' },
+  fast: { env: 'GEMINI_MODEL_FAST', fallback: 'gemini-3.5-flash-lite' },
   vision: { env: 'GEMINI_MODEL_VISION', fallback: 'gemini-3.1-flash-lite' },
   cheap: { env: 'GEMINI_MODEL_CHEAP', fallback: 'gemini-3.5-flash-lite' },
 };

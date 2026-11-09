@@ -32,7 +32,7 @@ is ever bumped; that file is the ground truth, ahead of any documentation.
 
 | Env var | Default | Used by |
 |---|---|---|
-| `GEMINI_MODEL_FAST` | `gemini-3.8-flash` | assistant, brief, estimate |
+| `GEMINI_MODEL_FAST` | `gemini-3.5-flash-lite` *(was `gemini-3.8-flash`; changed in 006 — see `api/_lib/genai.ts`)* | assistant, brief, estimate |
 | `GEMINI_MODEL_VISION` | `gemini-3.8-flash` | photo-to-room |
 | `GEMINI_MODEL_CHEAP` | `gemini-3.5-flash-lite` | reserved for low-value calls |
 

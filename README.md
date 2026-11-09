@@ -296,7 +296,7 @@ Models are environment variables, so changing one is a deployment setting rather
 |---|---|---|
 | `GEMINI_API_KEY` | — | Server-side only. Never prefix with `VITE_` |
 | `GEMINI_MODEL_VISION` | `gemini-3.1-flash-lite` | Reads the plan |
-| `GEMINI_MODEL_FAST` | `gemini-3.8-flash` | Assistant, brief and estimate. All three were verified on `gemini-3.5-flash-lite` |
+| `GEMINI_MODEL_FAST` | `gemini-3.5-flash-lite` | Assistant, brief and estimate — all three verified end to end on it. `gemini-3.8-flash` was unresponsive for days during development, and on the deployment opened a stream and wrote nothing |
 | `AI_RATE_LIMIT_PER_MIN` | `10` | Per-IP token bucket |
 | `AI_DAILY_CALL_BUDGET` | `500` | Global daily cap; `0` forces demo mode |
 | `AI_UPSTREAM_COOLDOWN_MIN` | `15` | Back-off after a provider refusal; `0` disables |
