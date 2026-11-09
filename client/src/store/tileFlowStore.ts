@@ -88,6 +88,9 @@ export interface ShapeDraft {
  * (`patchActive`), and the top-level fields are only a view of its active room:
  * restoring the view alone would be overwritten by the next plan commit.
  */
+/** The prices the estimator lets the user set (005). */
+export type EstimatePriceKey = 'tile' | 'adhesive' | 'grout' | 'labour';
+
 export interface AiSnapshot {
   room: Room;
   tileConfig: TileConfig;
@@ -195,6 +198,23 @@ export interface TileFlowState {
    * One level only: enough for "put that back", which is what the panel offers.
    */
   aiSnapshot: AiSnapshot | null;
+
+  /**
+   * 005 — the user's unit prices for the cost estimator, kept per measurement
+   * system so a price typed per ft² is never silently read as per m².
+   * Session-only: deliberately absent from the project payload built in
+   * `useProjectActions.ts`, so prices never reach the database (AC-3.4).
+   * `undefined` means "not typed" — the placeholder default applies.
+   */
+  estimatePrices: Record<MeasurementSystem, Partial<Record<EstimatePriceKey, number>>>;
+  /** Whether the tile price is per tile or per unit of floor area (AC-3.1). */
+  estimateTileUnit: 'tile' | 'area';
+  /** A display symbol only — nothing is ever converted (AC-2.4, AC-3.5). */
+  estimateCurrency: string;
+  /** Set one price for the current system; null clears it back to the placeholder. */
+  setEstimatePrice: (key: EstimatePriceKey, value: number | null) => void;
+  setEstimateTileUnit: (unit: 'tile' | 'area') => void;
+  setEstimateCurrency: (symbol: string) => void;
   /** Record the current state; called before the assistant applies a turn's calls */
   captureAiSnapshot: () => void;
   /** Restore the recorded state and clear it */
@@ -815,6 +835,30 @@ export const useTileFlowStore = create<TileFlowState>()(
         },
       });
     },
+
+    // Cost estimator prices (005) — session only, never persisted
+    estimatePrices: { imperial: {}, metric: {} },
+    estimateTileUnit: 'area',
+    estimateCurrency: '$',
+    setEstimatePrice: (key, value) => {
+      const { estimatePrices, system } = get();
+      const forSystem = { ...estimatePrices[system] };
+      if (value === null) delete forSystem[key];
+      else forSystem[key] = value;
+      set({ estimatePrices: { ...estimatePrices, [system]: forSystem } });
+    },
+    // A price per ft² is not a price per tile: switching the basis drops a
+    // typed tile price rather than carrying the number across.
+    setEstimateTileUnit: (unit) => {
+      const { estimateTileUnit, estimatePrices } = get();
+      if (unit === estimateTileUnit) return;
+      const clear = (p: Partial<Record<EstimatePriceKey, number>>) => { const { tile: _drop, ...rest } = p; return rest; };
+      set({
+        estimateTileUnit: unit,
+        estimatePrices: { imperial: clear(estimatePrices.imperial), metric: clear(estimatePrices.metric) },
+      });
+    },
+    setEstimateCurrency: (symbol) => set({ estimateCurrency: symbol }),
 
     // Layout assistant undo (003)
     aiSnapshot: null,

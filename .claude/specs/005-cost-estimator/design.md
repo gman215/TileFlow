@@ -105,7 +105,7 @@ Applied client-side in `sanityFilter()`, per unit family, scaled to room area:
 | Tiles | forced to the engine's `orderQuantity` |
 | Adhesive | ≤ 15 kg per m² of room area |
 | Grout | ≤ 5 kg per m² |
-| Labour | ≤ 2 hours per m², and ≥ 0.05 |
+| Labour | ≤ 2 hours per m² (**5 h/m² for herringbone and 45° diagonal**, which are laid at 2–4 ft²/h — a flat cap dropped a real herringbone line in testing) **plus a fixed 8 h day**, and ≥ 0.05 h per m² — a pure per-m² cap dropped a sensible 8 h for a 40 ft² bathroom in testing (setup and clean-up do not shrink with the room) |
 | Any line | finite, non-negative, `basis` non-empty |
 
 A line outside its bound is dropped and surfaced in the UI as "1 line was discarded as

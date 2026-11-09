@@ -37,6 +37,8 @@ import { ApiError } from './http.js';
 import type {
   AssistantMessageRequestDTO,
   BriefRequestDTO,
+  EstimateDTO,
+  EstimateRequestDTO,
   AssistantResultsRequestDTO,
   LayoutStatsDTO,
   RoomFromImageDTO,
@@ -458,3 +460,117 @@ type BriefMatchesDto =
 const BRIEF_MATCHES_DTO: BriefMatchesDto = true;
 void BRIEF_MATCHES_DTO;
 export type BriefInput = z.infer<typeof BriefIn>;
+
+// ─── 005 · cost estimator ─────────────────────────────────────────────────────
+//
+// The model returns quantities and unit rates; the client does every
+// multiplication and every sum. The response schema has **no subtotal and no
+// total field** — the model cannot supply what the schema does not ask for,
+// which is a stronger guarantee than telling it not to (AC-2.1, AC-2.3).
+
+const ESTIMATE_CATEGORIES = ['tile', 'adhesive', 'grout', 'labour', 'other'] as const;
+
+export const ESTIMATE_JSON_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    lineItems: {
+      type: 'array',
+      description: 'At most 10 lines: quantities and unit rates only; the application does the multiplying.',
+      items: {
+        type: 'object',
+        properties: {
+          item: { type: 'string' },
+          category: { type: 'string', enum: [...ESTIMATE_CATEGORIES] },
+          quantity: { type: 'number' },
+          unit: { type: 'string' },
+          unitCost: { type: 'number' },
+          basis: { type: 'string', description: 'The coverage rate or rule of thumb used.' },
+          source: { type: 'string', enum: ['engine', 'estimated'] },
+        },
+        required: ['item', 'category', 'quantity', 'unit', 'unitCost', 'basis', 'source'],
+      },
+    },
+    assumptions: { type: 'array', items: { type: 'string' } },
+    confidence: { type: 'number', description: '0 to 1.' },
+    notes: { type: 'string' },
+  },
+  required: ['lineItems', 'assumptions', 'confidence', 'notes'],
+};
+
+/**
+ * The mirror checks **shape**, and leaves per-line judgement to the client's
+ * `sanityFilter()`. That is a deliberate departure from a stricter mirror: an
+ * empty `basis` or a negative quantity on one line must drop *that line*, with
+ * the drop shown (AC-1.5, AC-5.2) — rejecting here would throw away every other
+ * line with it. Lengths and counts are still capped so a runaway generation
+ * cannot become a 5,000-line estimate.
+ */
+export const EstimateOut = z.object({
+  lineItems: z
+    .array(
+      z.object({
+        item: z.string().max(80),
+        category: z.enum(ESTIMATE_CATEGORIES),
+        quantity: z.number(),
+        unit: z.string().max(24),
+        unitCost: z.number(),
+        basis: z.string().max(200),
+        source: z.enum(['engine', 'estimated']),
+      })
+    )
+    .min(1)
+    .max(20),
+  assumptions: z.array(z.string().max(200)).max(12),
+  confidence: z.number().min(0).max(1),
+  notes: z.string().max(400),
+});
+
+export const ESTIMATE = schemaPair('estimate', ESTIMATE_JSON_SCHEMA, EstimateOut);
+
+const PRICE = z.number().finite().min(0).max(1e6).nullable();
+
+export const EstimateIn = z
+  .object({
+    stats: LayoutStatsIn,
+    formatted: BriefIn.shape.formatted,
+    engine: z
+      .object({
+        orderQuantity: z.number().int().min(0).max(1e7),
+        roomArea: z.number().finite().min(0).max(1e9),
+        areaUnit: z.enum(['ft²', 'm²']),
+      })
+      .strict(),
+    prices: z
+      .object({
+        tile: PRICE,
+        tileUnit: z.enum(['tile', 'area']),
+        adhesive: PRICE,
+        grout: PRICE,
+        labour: PRICE,
+      })
+      .strict(),
+    // A symbol, not a code: shown, never converted (AC-2.4).
+    currency: z.string().min(1).max(4).regex(/^[^\r\n\d]+$/),
+    system: z.enum(['metric', 'imperial']),
+  })
+  .strict();
+
+export type EstimateInput = z.infer<typeof EstimateIn>;
+
+type EstimateRequestMatchesDto =
+  z.infer<typeof EstimateIn> extends EstimateRequestDTO
+    ? EstimateRequestDTO extends z.infer<typeof EstimateIn>
+      ? true
+      : never
+    : never;
+const ESTIMATE_REQUEST_MATCHES_DTO: EstimateRequestMatchesDto = true;
+void ESTIMATE_REQUEST_MATCHES_DTO;
+
+type EstimateMirrorMatchesDto =
+  z.infer<typeof EstimateOut> extends Omit<EstimateDTO, 'demoMode'>
+    ? Omit<EstimateDTO, 'demoMode'> extends z.infer<typeof EstimateOut>
+      ? true
+      : never
+    : never;
+const ESTIMATE_MIRROR_MATCHES_DTO: EstimateMirrorMatchesDto = true;
+void ESTIMATE_MIRROR_MATCHES_DTO;

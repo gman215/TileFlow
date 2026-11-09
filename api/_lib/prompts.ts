@@ -333,8 +333,64 @@ STYLE
 Markdown with short sections and short bullet lists, readable on a phone on site. Under 400
 words. No title, no preamble, no sign-off.`;
 
-/** Filled by 005-cost-estimator / T2. */
-export const ESTIMATE_V1 = '';
+/**
+ * 005-cost-estimator. A materials takeoff as quantities and unit rates.
+ *
+ * Like 002 and 003, this needs a narrow carve-out from rule 1 of the common
+ * preamble: deriving consumable quantities from coverage rates *is* the domain
+ * knowledge being asked for ("5 kg/m² at a 6 mm notch"). The carve-out stops
+ * there. The model never multiplies a quantity by a price, never sums, and
+ * the schema has no field it could put a subtotal or total in. The two
+ * quantities the engine owns — tile order and room area — are echoed, and
+ * overridden client-side whatever comes back.
+ */
+export const ESTIMATE_V1 = `Your task: produce a materials and labour takeoff for a tile installation, as JSON matching
+the schema. Output only the JSON.
+
+ARITHMETIC — read this first
+
+- You never multiply a quantity by a price, and never add anything up. Give each line's quantity
+  and unit cost; the application computes every subtotal and the total. The schema has no
+  subtotal or total field. Never put a total, a sum or a price for the whole job anywhere,
+  including "notes".
+- The input gives you two engine quantities in "engine": the tile order quantity (it already
+  includes a 10% allowance) and the room area. Echo them exactly, unchanged, with
+  source "engine": the tile line's quantity is the order quantity in tiles, and any line priced
+  by floor area uses the room area in "areaUnit". Never recompute, round or adjust them.
+- This is the one exception to rule 1 above: you may derive consumable quantities (adhesive,
+  grout, spacers, trim, underlayment, sealer) and labour hours from coverage rates and rules of
+  thumb applied to the given figures. Those lines are source "estimated". The exception covers
+  those quantities only.
+
+EVERY LINE
+
+- "basis": the coverage rate or rule of thumb you used, specific enough to check — "thinset at
+  5 kg/m² with a 6 mm notch trowel", "grout per manufacturer chart for 1/8 in joints on
+  12 × 24 in tile". A line you cannot give a real basis for must be left out.
+- "category": tile, adhesive, grout or labour for those lines; everything else is other.
+- Units follow the measurement system: adhesive and grout in kg for metric, lb for imperial;
+  labour in hours; tiles in tiles.
+
+WHAT TO CONSIDER
+
+Tile; thinset or adhesive by notch size for the tile size; grout by joint width and tile size;
+spacers; edge trim by the perimeter; underlayment or backer board only if the input implies it;
+sealer where the tile type needs it; labour hours by pattern — herringbone and 45° diagonal
+take materially longer than a grid, and the basis must say so.
+
+PRICES
+
+- "prices" holds the user's unit prices. Where one is given, use it as that line's unit cost:
+  "tile" per tile, or per unit of area when "tileUnit" is "area"; "adhesive" and "grout" per kg
+  or lb; "labour" per hour.
+- Where a price is null, use a plausible placeholder unit cost and say in "assumptions" that it
+  is a placeholder. The currency symbol is for reading only; never convert anything.
+
+ALSO
+
+- At most 10 lines. List the assumptions you made, plainly.
+- "confidence" from 0 to 1, honestly: lower when the input leaves real gaps.
+- Never call this a quote or promise a price.`;
 
 // ─── Composition ──────────────────────────────────────────────────────────────
 

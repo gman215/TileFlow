@@ -148,6 +148,62 @@ export interface RoomFromImageDTO extends DemoFlagged {
   detectedSystem: 'metric' | 'imperial' | 'unknown';
 }
 
+// ─── 005 · cost estimator ─────────────────────────────────────────────────────
+
+/** Which user price a line is costed with; `other` keeps the model's placeholder. */
+export type EstimateCategory = 'tile' | 'adhesive' | 'grout' | 'labour' | 'other';
+
+/**
+ * Unit prices the user typed. Session-only, never persisted (AC-3.4). `null`
+ * means "no price given": the model supplies a placeholder and says so.
+ * Adhesive and grout are per kg (metric) or per lb (imperial); tile is per tile
+ * or per ft² / m² as `tileUnit` says; labour is per hour.
+ */
+export interface EstimatePricesDTO {
+  tile: number | null;
+  tileUnit: 'tile' | 'area';
+  adhesive: number | null;
+  grout: number | null;
+  labour: number | null;
+}
+
+/** `POST /api/ai/estimate`. */
+export interface EstimateRequestDTO {
+  stats: LayoutStatsDTO;
+  /** Display strings for the model to read: area, perimeter, tile, grout, pattern… */
+  formatted: BriefFormattedDTO;
+  /**
+   * The two engine quantities the model must echo, as plain numbers in the
+   * user's units — they are overridden client-side whatever comes back (AC-1.1,
+   * AC-1.2), but a model that sees the right number usually returns it.
+   */
+  engine: { orderQuantity: number; roomArea: number; areaUnit: 'ft²' | 'm²' };
+  prices: EstimatePricesDTO;
+  /** A display symbol only. Nothing is ever converted (AC-2.4). */
+  currency: string;
+  system: MeasurementSystem;
+}
+
+/** One line as the model returns it. There is no subtotal: the client computes it (AC-2.1). */
+export interface EstimateLineDTO {
+  item: string;
+  category: EstimateCategory;
+  quantity: number;
+  unit: string;
+  unitCost: number;
+  /** The coverage rate or rule used. An empty basis drops the line client-side (AC-1.5). */
+  basis: string;
+  source: 'engine' | 'estimated';
+}
+
+/** `POST /api/ai/estimate` response. Deliberately no `total` (AC-2.3). */
+export interface EstimateDTO extends DemoFlagged {
+  lineItems: EstimateLineDTO[];
+  assumptions: string[];
+  confidence: number;
+  notes: string;
+}
+
 // ─── 004 · installation brief ─────────────────────────────────────────────────
 
 /**
