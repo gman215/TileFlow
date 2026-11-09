@@ -26,6 +26,10 @@ import DrawLayer from './DrawLayer';
 import PlanLayer from './PlanLayer';
 import HintBar, { useHint } from './HintBar';
 import ToolIcon from './ToolIcon';
+import WallLengthEditor from './WallLengthEditor';
+import AnchorLayer from './AnchorLayer';
+import { anchorAtClick } from './anchorPick';
+import { sameTarget, type RectEdge, type WallPreview, type WallTarget } from './wallEdit';
 import { regionAt } from '@tileflow/geometry';
 import { planBounds } from '../../store/planHelpers';
 import type { PlanTool } from '../../store/tileFlowStore';
@@ -216,11 +220,53 @@ export default function TileCanvas() {
   const shapeEditing = !plan && !drawing && !editMode && Boolean(room.shape);
   const planEditing = Boolean(plan) && planTool === 'select' && !drawing && !editMode;
 
+  // ─── Wall length on the wall (011 R2) ─────────────────────────────
+  const selectedWall = useTileFlowStore((s) => s.selectedWall);
+  const [wallTarget, setWallTarget] = useState<WallTarget | null>(null);
+  // ─── Anchor tool (011 R3) ─────────────────────────────────────────
+  const anchorPicking = useTileFlowStore((s) => s.anchorPicking);
+  const setAnchorPicking = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) =>
+      useTileFlowStore.getState().setAnchorPicking(typeof v === 'function' ? v(useTileFlowStore.getState().anchorPicking) : v),
+    []
+  );
+  useEffect(() => { if (drawing || editMode) setAnchorPicking(false); }, [drawing, editMode, setAnchorPicking]);
+  const [wallPreview, setWallPreview] = useState<WallPreview | null>(null);
+  // Closing an outline wall's field also clears its selection: a wall click
+  // toggles selection, so a still-selected wall would need two clicks to reopen.
+  // A plan wall stays selected — its panel in the sidebar is still useful.
+  const closeWallEditor = useCallback(() => {
+    setWallTarget((t) => {
+      if (t?.kind === 'outline') useTileFlowStore.getState().setSelectedWall(null);
+      return null;
+    });
+    setWallPreview(null);
+  }, []);
+  const openRectEdge = (edge: RectEdge) => { if (!drawing && !editMode) setWallTarget({ kind: 'rect', edge }); };
+  // A click on a wall opens its field (`onWallPicked` below). Selection made by
+  // code — the assistant or the sidebar squaring to a wall — must not pop one
+  // up; clearing the selection, or a different wall becoming selected, closes it.
+  useEffect(() => {
+    setWallTarget((t) => (t?.kind === 'outline' && (!shapeEditing || selectedWall !== t.index) ? null : t));
+  }, [selectedWall, shapeEditing]);
+  useEffect(() => {
+    if (planEditing && selectedWallId) setWallTarget((t) => (sameTarget(t, { kind: 'plan', wallId: selectedWallId }) ? t : { kind: 'plan', wallId: selectedWallId }));
+    else setWallTarget((t) => (t?.kind === 'plan' ? null : t));
+  }, [selectedWallId, planEditing]);
+  // Drawing, tile editing, or switching between a rectangle, an outline and a plan closes it.
+  useEffect(() => { if (drawing || editMode) closeWallEditor(); }, [drawing, editMode, closeWallEditor]);
+  useEffect(() => { setWallTarget((t) => (t?.kind === 'rect' && (room.shape || plan) ? null : t)); }, [room.shape, plan]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<any>(null);
 
   // ─── Responsive container sizing ────────────────────────────────────
   const [size, setSize] = useState({ width: 0, height: 0 });
+  // Measured in the browser (011 T1): the labelled toolbar fits between the side
+  // pills down to ~1050 px of canvas; icon-only, it fits down to ~800 px (~900 px
+  // in a plan, which has more tools). Below that it drops to its own row.
+  const compactToolbar = size.width > 0 && size.width < 1060;
+  const stackToolbar = size.width > 0 && size.width < (plan ? 900 : 800);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -351,7 +397,7 @@ export default function TileCanvas() {
     if (container) container.style.cursor = cursor;
   }, []);
 
-  const baseCursor = drawing || (plan && planTool === 'room') ? 'crosshair' : editMode ? 'default' : 'grab';
+  const baseCursor = drawing || anchorPicking || (plan && planTool === 'room') ? 'crosshair' : editMode ? 'default' : 'grab';
 
   useEffect(() => {
     setCursor(baseCursor);
@@ -588,6 +634,7 @@ export default function TileCanvas() {
         return;
       }
       if (key === 'escape' && !drawing) {
+        setAnchorPicking(false);
         setRectStart(null);
         selectWall(null);
         useTileFlowStore.getState().selectNode(null);
@@ -600,8 +647,10 @@ export default function TileCanvas() {
         w: plan ? () => setPlanTool('wall') : undefined,
         c: () => (!plan || activeRoomId ? startDraw('hole') : undefined),
         d: plan ? undefined : () => startDraw('boundary'),
+        a: () => { cancelDraft(); if (plan) setPlanTool('select'); setAnchorPicking((v) => !v); },
         f: fitToScreen,
         e: toggleEditMode,
+        '[': () => useTileFlowStore.getState().toggleSidebar(),
       };
       const run = actions[key];
       if (run) {
@@ -619,6 +668,21 @@ export default function TileCanvas() {
         placePoint();
         return;
       }
+      if (anchorPicking) {
+        const st = useTileFlowStore.getState();
+        // Clicks arrive in plan space in a plan; anchors resolve in the active
+        // room's layout coordinates, which start at its origin.
+        const o = (st.plan && st.activeRoomId && st.roomOrigins[st.activeRoomId]) || { x: 0, y: 0 };
+        const raw = stageRef.current?.getRelativePointerPosition();
+        const p = raw ? { x: raw.x - o.x, y: raw.y - o.y } : null;
+        const anchor = p ? anchorAtClick(st.room, p, scale) : null;
+        if (anchor) {
+          useTileFlowStore.getState().setLayoutAnchor(anchor);
+          setAnchorPicking(false);
+        }
+        return;
+      }
+      if (e.target === stageRef.current) setWallTarget((t) => (t?.kind === 'rect' ? null : t));
       if (!plan) return;
       // A click on empty canvas (not a wall or handle) clears the wall selection.
       if (planTool === 'select' && e.target === stageRef.current) {
@@ -626,7 +690,7 @@ export default function TileCanvas() {
         useTileFlowStore.getState().selectNode(null);
       }
     },
-    [drawing, placePoint, plan, planTool, selectWall]
+    [drawing, placePoint, plan, planTool, selectWall, anchorPicking, scale]
   );
 
   // Delete removes the selected wall (not while typing in a field).
@@ -777,19 +841,27 @@ export default function TileCanvas() {
 
   const gripLength = Math.min(60 / scale, room.height / 3);
 
-  const hint = useHint(rectStart !== null);
+  const hint = useHint(rectStart !== null, anchorPicking);
   const tools: { id: string; label: string; title: string; key: string; icon: string; active: boolean; onClick: () => void }[] = plan
     ? [
         { id: 'select', label: 'Select', title: 'Select and move walls, corners, doors', key: 'V', icon: 'select', active: planTool === 'select' && !draft, onClick: () => setPlanTool('select') },
         { id: 'room', label: 'Room', title: 'Drag a rectangle to add a room', key: 'R', icon: 'room', active: planTool === 'room', onClick: () => setPlanTool('room') },
         { id: 'wall', label: 'Wall', title: 'Draw walls corner by corner', key: 'W', icon: 'wall', active: draft?.kind === 'walls', onClick: () => setPlanTool('wall') },
         { id: 'cutout', label: 'Cut-out', title: 'Mark an area of the active room that is not tiled', key: 'C', icon: 'cutout', active: draft?.kind === 'hole', onClick: () => startDraw('hole') },
+        { id: 'anchor', label: 'Anchor', title: "Set the active room's layout out from a cut-out, its edge, or a spot", key: 'A', icon: 'anchor', active: anchorPicking, onClick: () => { setPlanTool('select'); setAnchorPicking((v) => !v); } },
       ]
     : [
-        { id: 'select', label: 'Select', title: 'Resize the room, drag corners', key: 'V', icon: 'select', active: !draft, onClick: () => cancelDraft() },
+        { id: 'select', label: 'Select', title: 'Resize the room, drag corners', key: 'V', icon: 'select', active: !draft && !anchorPicking, onClick: () => { setAnchorPicking(false); cancelDraft(); } },
         { id: 'draw', label: 'Draw shape', title: 'Draw the floor outline corner by corner (L-shapes, bays)', key: 'D', icon: 'draw', active: draft?.kind === 'boundary', onClick: () => startDraw('boundary') },
         { id: 'cutout', label: 'Cut-out', title: 'Mark an island, tub or column that is not tiled', key: 'C', icon: 'cutout', active: draft?.kind === 'hole', onClick: () => startDraw('hole') },
+        { id: 'anchor', label: 'Anchor', title: 'Set the layout out from a feature: a cut-out, its edge, or a spot', key: 'A', icon: 'anchor', active: anchorPicking, onClick: () => { cancelDraft(); setAnchorPicking((v) => !v); } },
       ];
+
+  const navigateWall = (t: WallTarget) => {
+    if (t.kind === 'outline') useTileFlowStore.getState().setSelectedWall(t.index);
+    if (t.kind === 'plan') selectWall(t.wallId);
+    setWallTarget(t);
+  };
 
   return (
     <div ref={containerRef} className="absolute inset-0">
@@ -812,8 +884,11 @@ export default function TileCanvas() {
       </div>
 
       {/* ── Centre: the tools, undo/redo (010 R5) ───────────────────── */}
+      {/* Below ~1100 px of canvas — easy to reach now the sidebar resizes (011) —
+          the labelled toolbar no longer fits between the side pills, so tools
+          go icon-only; names stay in the tooltip and aria-label. */}
       <div
-        className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-0.5 rounded-full px-1.5 py-1 text-white shadow-lg"
+        className={`absolute left-1/2 -translate-x-1/2 z-10 flex items-center gap-0.5 rounded-full px-1.5 py-1 text-white shadow-lg ${stackToolbar ? 'top-[52px]' : 'top-3'}`}
         style={PILL_STYLE}
         role="toolbar"
         aria-label="Tools"
@@ -822,14 +897,15 @@ export default function TileCanvas() {
           <button
             key={t.id}
             onClick={t.onClick}
-            title={`${t.title} (${t.key})`}
+            title={`${t.label} — ${t.title} (${t.key})`}
+            aria-label={t.label}
             aria-pressed={t.active}
-            className={`flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium rounded-full transition-colors ${
+            className={`flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-[12px] font-medium rounded-full transition-colors ${
               t.active ? 'bg-white text-ink' : 'text-white/75 hover:text-white hover:bg-white/10'
             }`}
           >
             <ToolIcon name={t.icon} />
-            {t.label}
+            {!compactToolbar && t.label}
           </button>
         ))}
         <span className="mx-1 h-4 w-px bg-white/15" />
@@ -876,11 +952,12 @@ export default function TileCanvas() {
             <span className="mx-1 h-4 w-px bg-white/15" />
             <button
               onClick={convertToPlan}
-              title="Floor plan — walls with real thickness, several rooms, doors (no shortcut)"
-              className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium rounded-full text-amber-300 hover:bg-white/10"
+              title="Make floor plan — walls with real thickness, several rooms, doors (no shortcut)"
+              aria-label="Make floor plan"
+              className="flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-[12px] font-medium rounded-full text-amber-300 hover:bg-white/10"
             >
               <ToolIcon name="plan" />
-              Make floor plan
+              {!compactToolbar && 'Make floor plan'}
             </button>
           </>
         )}
@@ -930,7 +1007,7 @@ export default function TileCanvas() {
       </div>
 
       {/* ── Under the toolbar: length entry while drawing, and the instruction line ── */}
-      <div className="pointer-events-none absolute left-1/2 top-[54px] z-20 flex -translate-x-1/2 flex-col items-center gap-2">
+      <div className={`pointer-events-none absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2 ${stackToolbar ? 'top-[92px]' : 'top-[54px]'}`}>
         {draft && (
           <div
             className="pointer-events-auto flex items-center gap-2 rounded-full px-3 py-1.5 text-white shadow-lg"
@@ -985,6 +1062,7 @@ export default function TileCanvas() {
         scaleX={scale}
         scaleY={scale}
         draggable={!editMode && !drawing && !(plan && planTool === 'room')}
+        onDragStart={(e) => { if (e.target === stageRef.current) closeWallEditor(); }}
         onDragEnd={handleStageDragEnd}
         onWheel={handleWheel}
         onMouseDown={handleRectDown}
@@ -1054,7 +1132,8 @@ export default function TileCanvas() {
             <RoomShapeLayer
               shape={room.shape}
               scale={scale}
-              interactive={shapeEditing}
+              interactive={shapeEditing && !anchorPicking}
+              onWallPicked={(index) => setWallTarget({ kind: 'outline', index })}
             />
           ) : (
             <>
@@ -1090,6 +1169,24 @@ export default function TileCanvas() {
                 listening={false}
               />
 
+              {/* Top and left edges: not resize handles, but clickable for a length (011 R2) */}
+              <Line
+                points={[0, 0, room.width, 0]}
+                stroke="transparent"
+                hitStrokeWidth={14 / scale}
+                listening={!drawing}
+                onClick={() => openRectEdge('top')}
+                onTap={() => openRectEdge('top')}
+              />
+              <Line
+                points={[0, 0, 0, room.height]}
+                stroke="transparent"
+                hitStrokeWidth={14 / scale}
+                listening={!drawing}
+                onClick={() => openRectEdge('left')}
+                onTap={() => openRectEdge('left')}
+              />
+
               {/* Resize handle — right edge */}
               <Rect
                 x={room.width}
@@ -1099,6 +1196,9 @@ export default function TileCanvas() {
                 offsetX={6 / scale}
                 fill="transparent"
                 draggable={!drawing}
+                onClick={() => openRectEdge('right')}
+                onTap={() => openRectEdge('right')}
+                onDragStart={closeWallEditor}
                 onDragMove={handleRightEdgeDrag}
                 onMouseEnter={() => setCursor('ew-resize')}
                 onMouseLeave={() => setCursor(baseCursor)}
@@ -1114,6 +1214,9 @@ export default function TileCanvas() {
                 offsetY={6 / scale}
                 fill="transparent"
                 draggable={!drawing}
+                onClick={() => openRectEdge('bottom')}
+                onTap={() => openRectEdge('bottom')}
+                onDragStart={closeWallEditor}
                 onDragMove={handleBottomEdgeDrag}
                 onMouseEnter={() => setCursor('ns-resize')}
                 onMouseLeave={() => setCursor(baseCursor)}
@@ -1181,6 +1284,37 @@ export default function TileCanvas() {
             </Group>
           )}
 
+          {/* The layout anchor, if one is set (011) — in a plan, on the active room */}
+          {(() => {
+            const o = plan && activeRoomId ? roomOrigins[activeRoomId] : null;
+            if (plan && !o) return null;
+            return (
+              <Group x={o?.x ?? 0} y={o?.y ?? 0}>
+                <AnchorLayer scale={scale} interactive={!drawing && !editMode && !anchorPicking} />
+              </Group>
+            );
+          })()}
+
+          {/* A wall length being typed: the result as a dashed ghost, the walls that move in bold */}
+          {wallPreview && (
+            <Group listening={false}>
+              {wallPreview.lines.map((pts, i) => (
+                <Line
+                  key={`wp-${i}`}
+                  points={pts.flatMap((p) => [p.x, p.y])}
+                  closed={wallTarget?.kind !== 'plan'}
+                  stroke="#F59E0B"
+                  strokeWidth={2 / scale}
+                  dash={[8 / scale, 6 / scale]}
+                  perfectDrawEnabled={false}
+                />
+              ))}
+              {wallPreview.absorbing.map(([a, b], i) => (
+                <Line key={`wa-${i}`} points={[a.x, a.y, b.x, b.y]} stroke="#F59E0B" strokeWidth={5 / scale} opacity={0.75} perfectDrawEnabled={false} />
+              ))}
+            </Group>
+          )}
+
           {/* The outline being drawn */}
           {draft && (
             <DrawLayer
@@ -1193,6 +1327,17 @@ export default function TileCanvas() {
           )}
         </Layer>
       </Stage>
+      {wallTarget && (
+        <WallLengthEditor
+          target={wallTarget}
+          scale={scale}
+          view={{ x: effectiveView.x, y: effectiveView.y }}
+          bounds={size}
+          onPreview={setWallPreview}
+          onNavigate={navigateWall}
+          onClose={closeWallEditor}
+        />
+      )}
     </div>
   );
 }

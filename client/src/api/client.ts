@@ -26,6 +26,8 @@ export interface ProjectDTO {
     unit: string;
     /** Drawn outline; absent for a plain rectangular room */
     shape?: RoomShape | null;
+    /** A point anchor on a plain rectangle (011) */
+    anchor?: { kind: 'point'; at: { x: number; y: number } } | null;
   } | null;
   tileConfig: {
     width: number;
@@ -34,6 +36,8 @@ export interface ProjectDTO {
     pattern: string;
     alpha: number;
     beta: number;
+    /** 011 — saved since anchors depend on it; absent on older projects */
+    alignment?: 'optimize' | 'center-tile' | 'center-grout';
   } | null;
   /** Floor plan (008); null or absent for a single-room project */
   plan?: Plan | null;
@@ -51,6 +55,8 @@ export const api = {
       height: number;
       unit: string;
       shape?: RoomShape | null;
+    /** A point anchor on a plain rectangle (011) */
+    anchor?: { kind: 'point'; at: { x: number; y: number } } | null;
     };
     tileConfig: {
       width: number;
@@ -59,6 +65,8 @@ export const api = {
       pattern: string;
       alpha: number;
       beta: number;
+    /** 011 — saved since anchors depend on it; absent on older projects */
+    alignment?: 'optimize' | 'center-tile' | 'center-grout';
     };
     plan?: Plan | null;
   }) =>
@@ -76,6 +84,8 @@ export const api = {
       height: number;
       unit: string;
       shape?: RoomShape | null;
+    /** A point anchor on a plain rectangle (011) */
+    anchor?: { kind: 'point'; at: { x: number; y: number } } | null;
     };
       tileConfig: {
         width: number;
@@ -84,6 +94,8 @@ export const api = {
         pattern: string;
         alpha: number;
         beta: number;
+    /** 011 — saved since anchors depend on it; absent on older projects */
+    alignment?: 'optimize' | 'center-tile' | 'center-grout';
       };
       plan: Plan | null;
     }>

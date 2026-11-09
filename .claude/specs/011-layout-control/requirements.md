@@ -1,6 +1,6 @@
 # 011 — Layout Control · Requirements
 
-**Status:** Not started
+**Status:** Complete — verified 2026-11-09 (see tasks.md)
 **Depends on:** 010-ux-onboarding (sidebar, toolbar, shortcuts), 008-floor-plan (plan rooms)
 
 ## Purpose

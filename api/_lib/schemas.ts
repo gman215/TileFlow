@@ -308,6 +308,8 @@ export const LayoutStatsIn = z.object({
     wallCount: COUNT,
     holeCount: COUNT,
     referenceWall: z.string().regex(/^W\d{1,4}$/).nullable(),
+    // Quoted to the user and read by the model: one short printable line.
+    anchor: z.string().max(160).regex(/^[^\r\n]*$/).nullable(),
     isDrawn: z.boolean(),
   }),
   tile: z.object({
@@ -443,6 +445,7 @@ export const BriefIn = z
         pattern: BRIEF_STRING,
         alignment: BRIEF_STRING,
         referenceWall: z.string().regex(/^W\d{1,4}$/).nullable(),
+        anchor: z.string().max(160).regex(/^[^\r\n]*$/).nullable(),
       })
       .strict(),
     sliverRisk: z.boolean(),

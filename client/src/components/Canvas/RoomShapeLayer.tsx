@@ -45,6 +45,7 @@ function WallLabel({
   scale,
   color,
   outward,
+  onSelect,
 }: {
   a: Vec2;
   b: Vec2;
@@ -52,6 +53,8 @@ function WallLabel({
   scale: number;
   color: string;
   outward: Vec2;
+  /** Clicking the dimension opens that wall's length field (011 R2). */
+  onSelect?: () => void;
 }) {
   const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   const length = Math.hypot(b.x - a.x, b.y - a.y);
@@ -78,7 +81,10 @@ function WallLabel({
       fill={color}
       align="center"
       rotation={deg}
-      listening={false}
+      listening={Boolean(onSelect)}
+      onClick={onSelect}
+      onDblClick={onSelect}
+      onTap={onSelect}
       perfectDrawEnabled={false}
     />
   );
@@ -137,6 +143,11 @@ interface Props {
   scale: number;
   /** Corner handles and wall picking are live only while editing the outline */
   interactive: boolean;
+  /**
+   * A wall (or its dimension) was clicked to select it — opens its length
+   * field (011). Selection made by code (squaring to a wall) does not.
+   */
+  onWallPicked?: (index: number) => void;
 }
 
 /**
@@ -146,7 +157,7 @@ interface Props {
  * Cut-outs are painted in the stage colour *above* the tiles, which is what
  * punches an island or column out of the tiles drawn underneath.
  */
-export default function RoomShapeLayer({ shape, scale, interactive }: Props) {
+export default function RoomShapeLayer({ shape, scale, interactive, onWallPicked }: Props) {
   const system = useTileFlowStore((s) => s.system);
   const selectedWall = useTileFlowStore((s) => s.selectedWall);
   const setSelectedWall = useTileFlowStore((s) => s.setSelectedWall);
@@ -213,8 +224,8 @@ export default function RoomShapeLayer({ shape, scale, interactive }: Props) {
             strokeWidth={(isReference || isSelected ? 3.5 : 2) / scale}
             hitStrokeWidth={14 / scale}
             listening={interactive}
-            onClick={() => setSelectedWall(isSelected ? null : wall.index)}
-            onTap={() => setSelectedWall(isSelected ? null : wall.index)}
+            onClick={() => { setSelectedWall(isSelected ? null : wall.index); if (!isSelected) onWallPicked?.(wall.index); }}
+            onTap={() => { setSelectedWall(isSelected ? null : wall.index); if (!isSelected) onWallPicked?.(wall.index); }}
             perfectDrawEnabled={false}
           />
         );
@@ -250,6 +261,7 @@ export default function RoomShapeLayer({ shape, scale, interactive }: Props) {
                 : LABEL_COLOR
             }
             text={formatDisplayFromMM(wall.length, display.unit, display.imperialFormat)}
+            onSelect={interactive ? () => { setSelectedWall(wall.index); onWallPicked?.(wall.index); } : undefined}
           />
         );
       })}

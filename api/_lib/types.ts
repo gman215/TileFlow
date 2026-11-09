@@ -50,6 +50,12 @@ export interface LayoutStatsDTO {
      * which on screen is W2, a different wall.
      */
     referenceWall: string | null;
+    /**
+     * What a fixed layout is set out from when it is a feature (011), described
+     * for people: "the edge 1.60 m long of cut-out 1 (1.60 × 0.80 m), full tiles
+     * starting at that edge". Null = the room centre, or the reference wall.
+     */
+    anchor: string | null;
     /** False when the room is still a plain W × H rectangle. */
     isDrawn: boolean;
   };
@@ -244,6 +250,8 @@ export interface BriefFormattedDTO {
   alignment: string;
   /** The wall table's label, "W3", or null when squared to the room. */
   referenceWall: string | null;
+  /** The layout anchor, described for an installer (011), or null. */
+  anchor: string | null;
 }
 
 /**

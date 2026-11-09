@@ -45,7 +45,7 @@ other and can be built in any order; the order below is by demo impact.
 | 008 | [floor-plan](008-floor-plan/) | `feat/008-floor-plan` | **Complete (21/21)** — walls, derived rooms, per-room layouts, pattern groups; verified in browser and against Postgres | — | — |
 | 010 | [ux-onboarding](010-ux-onboarding/) | `feat/010-ux-onboarding` | **Complete (10/10)** — Start card & examples, one-gesture rooms, auto-rooms, toolbar & shortcuts, instruction line, stepped sidebar | — | — |
 | 009 | [wall-framing](009-wall-framing/) | `feat/009-wall-framing` | **Complete (14/14)** — studs, openings, junction backing, takeoff, elevations; verified in browser and against Postgres | — | — |
-| 011 | [layout-control](011-layout-control/) | `feat/011-layout-control` | Planned (1/13) — resizable sidebar, edit a wall's length on the wall, centre the layout on a feature (tub, cabinet, point) | — | — |
+| 011 | [layout-control](011-layout-control/) | `feat/011-layout-control` | **Complete (13/13)** — resizable sidebar, edit a wall's length on the wall, centre the layout on a feature (cut-out centre or edge, or a point) with full tiles from an edge; verified in the browser and against Postgres | — | — |
 | 012 | installer-output *(proposed)* | — | Proposed — dimensioned cut list, printable set-out sheet PDF, order by the box | — | — |
 | 013 | patterns-and-shapes *(proposed)* | — | Proposed — basketweave, chevron, windmill, Versailles, hexagon, checkerboard, ¼ offset, random plank; 33 % plank-offset warning | — | — |
 | 014 | wall-tiling *(proposed)* | — | Proposed — showers, tub surrounds, backsplashes as tiled elevations with openings | — | — |

@@ -44,6 +44,15 @@ export function toLayoutRoom(derived: DerivedRoom, room: PlanRoom): LayoutRoom |
     holes: derived.holes,
     referenceWall: index >= 0 ? index : undefined,
   };
+  // The anchor rides along (011). Derived holes list free-standing islands
+  // first, then the room's hand-drawn cut-outs, so a cut-out anchor's index
+  // shifts by the island count; a point is in plan space, and normalising
+  // below moves it with the outline. A grouped room shares the group's frame,
+  // so its own anchor would contradict it — left out.
+  if (room.anchor && !room.groupId) {
+    const islands = derived.holes.length - room.holes.length;
+    shape.anchor = room.anchor.kind === 'point' ? room.anchor : { ...room.anchor, hole: room.anchor.hole + islands };
+  }
 
   const bb = boundingBoxOf([shape.boundary, ...shape.holes]);
   const { shape: normalized, width, height } = normalizeShape(shape);

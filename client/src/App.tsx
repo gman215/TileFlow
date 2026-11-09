@@ -12,6 +12,7 @@ import TilePanel from './components/Controls/TilePanel';
 import OptimizationPanel from './components/Controls/OptimizationPanel';
 import AssistantPanel from './components/AI/AssistantPanel';
 import EstimatePanel from './components/AI/EstimatePanel';
+import SidebarResizer from './components/SidebarResizer';
 import StatsPanel from './components/Controls/StatsPanel';
 import ProjectPanel from './components/Controls/ProjectPanel';
 import { useTileFlowStore } from './store/tileFlowStore';
@@ -71,6 +72,9 @@ export default function App() {
   const elevationOpen = useTileFlowStore((s) => s.elevationWallId !== null);
   const setHelpOpen = useTileFlowStore((s) => s.setHelpOpen);
   const selectionKey = useTileFlowStore((s) => s.selectedWallId ?? s.selectedNodeId);
+  const sidebarWidth = useTileFlowStore((s) => s.sidebarWidth);
+  const sidebarHidden = useTileFlowStore((s) => s.sidebarHidden);
+  const toggleSidebar = useTileFlowStore((s) => s.toggleSidebar);
 
   // A new selection shows at the top of the sidebar; bring it into view.
   const asideRef = useRef<HTMLElement>(null);
@@ -117,7 +121,13 @@ export default function App() {
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar — grouped sections split by hairline dividers */}
-        <aside ref={asideRef} className="w-[312px] flex-shrink-0 overflow-y-auto bg-white border-r border-hairline divide-y divide-divider">
+        {/* Resizable and hideable (011 R1); hidden, the canvas takes the full width. */}
+        <aside
+          ref={asideRef}
+          hidden={sidebarHidden}
+          style={{ width: sidebarWidth }}
+          className="flex-shrink-0 overflow-y-auto bg-white border-r border-hairline divide-y divide-divider"
+        >
           {/* What is selected comes first, then the steps in order (010 R6). */}
           {inPlan ? (
             <>
@@ -138,9 +148,18 @@ export default function App() {
           {inPlan && <TakeoffPanel />}
           <ProjectPanel />
         </aside>
+        {!sidebarHidden && <SidebarResizer />}
 
         {/* Canvas area */}
         <main className="flex-1 relative overflow-hidden bg-stage">
+          <button
+            onClick={toggleSidebar}
+            aria-label={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+            title={sidebarHidden ? 'Show sidebar ([)' : 'Hide sidebar ([)'}
+            className="absolute left-0 top-1/2 z-20 -translate-y-1/2 rounded-r-md border border-l-0 border-white/10 bg-[rgba(36,35,33,.86)] px-1 py-3 text-[11px] leading-none text-white/60 hover:text-white"
+          >
+            {sidebarHidden ? '›' : '‹'}
+          </button>
           <TileCanvas />
           {/* Floating stats card (bottom-left over the stage) */}
           <StatsPanel />

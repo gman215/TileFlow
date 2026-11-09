@@ -15,6 +15,12 @@ const PATHS: Record<string, React.ReactNode> = {
   cutout: <rect x="4" y="4" width="8" height="8" strokeDasharray="2 1.6" />,
   undo: <path d="M5 6H10a3 3 0 010 6H7M5 6l2.5-2.5M5 6l2.5 2.5" />,
   redo: <path d="M11 6H6a3 3 0 000 6h3M11 6L8.5 3.5M11 6L8.5 8.5" />,
+  anchor: (
+    <>
+      <circle cx="8" cy="8" r="3.2" />
+      <path d="M8 1.5v3.3M8 11.2v3.3M1.5 8h3.3M11.2 8h3.3" />
+    </>
+  ),
   plan: (
     <>
       <rect x="2.5" y="2.5" width="11" height="11" />
