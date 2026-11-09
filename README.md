@@ -31,7 +31,7 @@ Open the app and the **Start** card asks what you are tiling:
    apartment.
 
 The line under the toolbar always says what to do next, and **?** shows every shortcut
-(V select · R room · W wall · C cut-out · D draw shape · F fit · Ctrl+Z undo).
+(V select · R room · W wall · C cut-out · D draw shape · A anchor · F fit · [ sidebar · Ctrl+Z undo).
 
 ## Features
 
@@ -45,7 +45,15 @@ The line under the toolbar always says what to do next, and **?** shows every sh
   - **Center tile** — A full tile is centered on the anchor
   - **Center joint** — A grout joint runs through the anchor
 
-  The anchor is the room centre, or the reference wall when one is picked.
+  The anchor is the room centre, the reference wall when one is picked — or a **feature**.
+- **Centre on a feature** — Set the layout out from what the eye goes to, not wall to wall: the
+  centre of a cut-out (a tub, an island, a cabinet), one edge of it, or any spot on the floor (a
+  toilet flange, a doorway). Click with the **Anchor** tool (A), or drag the marker; it snaps to
+  cut-out centres, edge midpoints and wall midpoints, and follows its cut-out when that moves.
+  On an edge, **Full tiles from this edge** puts a grout joint along it — full tiles start at the
+  tub front, the layout is symmetric about the tub's centreline, and the cuts go to the walls
+  where the baseboard hides them. Works in floor plans too, and the installation brief says
+  where the layout is set out from
 - **Tile Orientation** — Switch between landscape and portrait (e.g. 12×24 in ↔ 24×12 in) with one click
 
 ### AI
@@ -73,6 +81,10 @@ The line under the toolbar always says what to do next, and **?** shows every sh
 - **Snapping** — Corners snap to 90°/45° off the previous corner, to a round increment (10 mm metric / 1 in imperial), and to existing corners; hold **Shift** for a free angle
 - **Type exact lengths** — Type a wall length while drawing to place that corner precisely (`4.2` or `12 ft 6 in`); a live readout shows the current wall length and how far the outline still is from closing
 - **Wall table** — Every wall listed in drawing order with its length; retype any one and the room stays square (the parallel wall absorbs the change, so a rectangle stays a rectangle and an L stays square)
+- **Type a length on the wall** — Click any wall (or its dimension) and a length field opens right
+  there; a dashed ghost previews the result and highlights the wall that moves before you press
+  Enter. Tab walks round the room; one Ctrl+Z undoes it. Works for rectangles, drawn outlines and
+  floor-plan walls (on the clear length the canvas shows)
 - **Cut-outs** — Draw islands, columns, tubs or closets that are not tiled; they are excluded from the area, tile count and waste
 - **Square to a wall** — Pick a reference wall (⌗) and the tile grid runs parallel to it, anchored on its midpoint — how a floor is actually set out, rather than to the bounding box
 - **Edit freely** — Drag any corner, undo/redo outline changes, or reset back to a rectangle. Self-crossing outlines and stray cut-outs are flagged before they are tiled
@@ -141,6 +153,8 @@ The line under the toolbar always says what to do next, and **?** shows every sh
 ### Canvas & Editing
 
 - **Studio Layout** — Light "studio" shell with a dark canvas stage; the tile plan is the focus while controls sit in a quiet white sidebar
+- **Resizable sidebar** — Drag its edge (260–560 px, remembered per browser, double-click resets) or
+  hide it with **[**; the toolbar compacts to icons, then to its own row, as the canvas narrows
 - **Interactive 2D Canvas** — Color-coded tiles (full vs. cut) rendered with react-konva on a dark stage
 - **Floating Canvas Toolbar** — Translucent dark pills overlaid on the stage: current pattern + alignment switch (Auto / Center tile / Center joint) on the left; zoom −/100%/+, **Fit**, and **Edit tiles** toggle on the right
 - **Pan & Zoom** — Drag to pan, scroll-wheel zoom centered on cursor, +/- controls and **Fit** button

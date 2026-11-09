@@ -10,6 +10,7 @@
  */
 
 import { Polygon, Room, TileConfig, AlignmentMode, Vec2 } from '../types';
+import { fullTilesFromEdgeAxis } from '../shape';
 import {
   rectToPolygon,
   rotatePolygon,
@@ -71,21 +72,28 @@ export function generateTiles(params: PatternGeneratorParams): Polygon[] {
   const maxX = Math.max(...corners.map((p) => p.x));
   const minY = Math.min(...corners.map((p) => p.y));
   const maxY = Math.max(...corners.map((p) => p.y));
-  const width = maxX - minX;
-  const height = maxY - minY;
 
-  // Generators anchor on their area's centre; shift the offset so the anchor
-  // lands on the frame origin instead.
+  // Generators anchor on their own area's centre — the rule the alignment
+  // modes are proven against. So generate over a box *centred on the frame
+  // origin*, covering the area, and the anchor lands on the origin for every
+  // pattern with the offsets untouched.
+  //
+  // This replaced shifting the offset by (origin − box centre), which is a
+  // pure translation only for grid and the offset bonds: herringbone and 45°
+  // diagonal rotate their lattice before the offset is felt, so the shift
+  // rotated with it and Centre a tile missed the reference-wall midpoint by
+  // 200+ mm (found in 011). The box can be up to twice as wide when the origin
+  // sits at an edge; clipping rejects the extra tiles by bounding box.
+  const halfW = Math.max(origin.x - minX, maxX - origin.x);
+  const halfH = Math.max(origin.y - minY, maxY - origin.y);
   const local = generateForArea({
     ...params,
-    areaWidth: width,
-    areaHeight: height,
-    offsetX: params.offsetX + (origin.x - minX) - width / 2,
-    offsetY: params.offsetY + (origin.y - minY) - height / 2,
+    areaWidth: 2 * halfW,
+    areaHeight: 2 * halfH,
   });
 
   return local.map((tile) =>
-    rotatePolygon(translatePolygon(tile, minX, minY), origin, angle)
+    rotatePolygon(translatePolygon(tile, origin.x - halfW, origin.y - halfH), origin, angle)
   );
 }
 
@@ -357,15 +365,26 @@ function generateDiagonal45(params: PatternGeneratorParams): Polygon[] {
  * the weave.
  */
 export function computeAlignmentOffset(
-  _room: Room,
+  room: Room,
   config: TileConfig,
   mode: Exclude<AlignmentMode, 'optimize'>
 ): { offsetX: number; offsetY: number } {
-  if (mode === 'center-tile') {
-    return { offsetX: -config.width / 2, offsetY: -config.height / 2 };
-  }
+  const centred =
+    mode === 'center-tile'
+      ? { offsetX: -config.width / 2, offsetY: -config.height / 2 }
+      : { offsetX: config.grout / 2, offsetY: config.grout / 2 };
 
-  return { offsetX: config.grout / 2, offsetY: config.grout / 2 };
+  // "Full tiles from this edge" (011 AC-3.3): the axis across the edge takes
+  // the joint value, so a grout band sits on the edge and full tiles start on
+  // both sides of it; the axis along the edge keeps the chosen mode, so the
+  // layout stays symmetric about the feature's centreline.
+  const anchor = room.shape?.anchor;
+  if (anchor?.kind === 'hole-edge' && anchor.fullTilesFromEdge) {
+    const rule = fullTilesFromEdgeAxis(room.shape, config.pattern);
+    if (rule.along === 'x') return { offsetX: centred.offsetX, offsetY: config.grout / 2 };
+    if (rule.along === 'y') return { offsetX: config.grout / 2, offsetY: centred.offsetY };
+  }
+  return centred;
 }
 
 /**

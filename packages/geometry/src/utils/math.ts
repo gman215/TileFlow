@@ -215,11 +215,19 @@ export function normalizeShape(shape: RoomShape): {
   const shift = (p: Polygon): Polygon =>
     dx === 0 && dy === 0 ? p : translatePolygon(p, dx, dy);
 
+  // A point anchor is a coordinate, so it moves with the outline; anchors on
+  // a cut-out are indices and need nothing (011).
+  const anchor =
+    shape.anchor?.kind === 'point' && (dx !== 0 || dy !== 0)
+      ? { kind: 'point' as const, at: { x: shape.anchor.at.x + dx, y: shape.anchor.at.y + dy } }
+      : shape.anchor;
+
   return {
     shape: {
       ...shape,
       boundary: shift(shape.boundary),
       holes: shape.holes.map(shift),
+      ...(anchor ? { anchor } : {}),
     },
     width: bb.maxX - bb.minX,
     height: bb.maxY - bb.minY,

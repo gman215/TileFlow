@@ -477,6 +477,77 @@ center-grout). Say what they mean — "the layout the engine chose", "a tile cen
 and use the alignment name from "figures" ("Least waste") when naming it.`;
 
 /**
+ * 004, revised for 011's anchors. V2's setting-out rule knew only the room
+ * centre and the reference wall, so a layout centred on a tub was described as
+ * set out "from the room centre" — wrong exactly when the user chose otherwise.
+ * V3 adds the anchor case, quoted from `figures.anchor`.
+ */
+export const BRIEF_V3 = `Your task: write a setting-out brief for a tile installer, from a finished layout computed by a
+geometry engine. It is what a tiler would write on the back of the plan.
+
+NUMBERS — read this first
+
+- Never compute, derive, estimate, round, convert or adjust a number. Every figure you write
+  must appear character for character in "figures" in the input, in the units given there. If
+  the sentence you want needs a figure that is not there, leave the sentence out.
+- Never write a cost, a price, a rate or a currency symbol. Costs are a separate feature.
+- The yes/no facts in the input ("sliverRisk", "herringboneMismatch") were decided by the
+  engine. Never second-guess them and never decide them yourself.
+
+INPUT
+
+A JSON object: "figures" (display strings: tile size, grout, counts, waste, order quantity,
+room area, perimeter, wall and cut-out counts, smallest cut, pattern, alignment, reference
+wall), "alignmentMode" (optimize, center-tile or center-grout), "sliverRisk" and
+"sliverThreshold", "herringboneMismatch", and "isDrawn" (false for a plain rectangle).
+
+SECTIONS, in this order, each a "## " heading
+
+## Setting out
+Where to strike the first line, following "alignmentMode":
+- optimize: the engine chose the grid position that scored best; strike lines from that
+  computed grid rather than from the room centre.
+- center-tile: a full tile is centred on the anchor; mark the centre and work out from it.
+- center-grout: a grout joint runs through the anchor; strike the first line there.
+When "anchor" in "figures" is set, the layout is set out from that feature, not the room —
+quote it exactly as given ("the edge 1.60 m long of cut-out 1 (1.60 × 0.80 m)"): that is the
+point to mark and strike from. When it says full tiles start at that edge, say the first full
+row starts against that edge and the cuts go to the walls. Never call the anchor the room centre.
+Otherwise, when "referenceWall" is set, the anchor is that wall's midpoint and lines run parallel
+to that wall — say so, naming the wall exactly as given ("W3"), because that is how a floor is
+really set out. Otherwise the anchor is the room centre.
+
+## Cut list
+How many cut tiles and how many full ones, quoting the counts; that cuts fall around the
+perimeter and at any cut-outs; and what to expect at the edges. Quote the smallest cut.
+When "holeCount" is not "0", say the cut-outs are excluded from the counts and the area.
+
+## Watch out for
+- When "sliverRisk" is true: the smallest cut is under a third of a tile ("sliverThreshold") —
+  thin, fragile to cut and obvious on the finished floor. Suggest trying a different alignment
+  or nudging the grid. When it is false, do not raise slivers.
+- When "herringboneMismatch" is true: herringbone only fits when the tile's length plus grout is
+  twice its width plus grout; with this tile the joints will drift. Suggest a 2:1 tile.
+- 45° diagonal: more perimeter offcuts and more waste than a grid.
+- Offset patterns: choose the joint direction deliberately before the first row.
+Only include points that apply to this layout. If none do, say the layout has no special
+hazards in one sentence.
+
+## Ordering
+Quote the order quantity and say it already includes a 10% allowance, for breakage, future
+repairs and matching the dye lot. Do not suggest a different percentage.
+
+STYLE
+
+Markdown with short sections and short bullet lists, readable on a phone on site. Under 400
+words. No title, no preamble, no sign-off.
+
+Write for the installer, not about the input: never write the input's field names (such as
+sliverRisk, sliverThreshold or alignmentMode) or raw mode values (optimize, center-tile,
+center-grout). Say what they mean — "the layout the engine chose", "a tile centred on the room" —
+and use the alignment name from "figures" ("Least waste") when naming it.`;
+
+/**
  * 005-cost-estimator. A materials takeoff as quantities and unit rates.
  *
  * Like 002 and 003, this needs a narrow carve-out from rule 1 of the common
@@ -542,7 +613,7 @@ export type PromptName = 'room-from-image' | 'assistant' | 'brief' | 'estimate';
 const FEATURE_PROMPTS: Record<PromptName, { text: string; spec: string }> = {
   'room-from-image': { text: ROOM_FROM_IMAGE_V1, spec: '002-photo-to-room / T2' },
   assistant: { text: ASSISTANT_V3, spec: '003-layout-assistant / T3' },
-  brief: { text: BRIEF_V2, spec: '004-installation-brief / T3' },
+  brief: { text: BRIEF_V3, spec: '004-installation-brief / T3' },
   estimate: { text: ESTIMATE_V1, spec: '005-cost-estimator / T2' },
 };
 

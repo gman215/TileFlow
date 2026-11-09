@@ -27,6 +27,7 @@ const SHORTCUTS: [string, string][] = [
   ['C', 'Cut-out — an area that is not tiled'],
   ['E', 'Edit tiles — nudge single tiles'],
   ['F', 'Fit to screen'],
+  ['[', 'Hide or show the sidebar'],
   ['Ctrl+Z', 'Undo'],
   ['Ctrl+Shift+Z', 'Redo'],
   ['Delete', 'Remove the selected wall'],

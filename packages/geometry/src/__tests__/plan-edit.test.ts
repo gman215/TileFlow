@@ -159,6 +159,22 @@ describe('wall properties', () => {
     const next = setClearLength(plan, top.id, 'right', 150 * IN);
     expect(clearLength(next, top.id, 'right') / IN).toBeCloseTo(150, 6);
   });
+
+  it('is exact on a side where another wall tees in (one step landed 2–8 mm off — 011)', () => {
+    // A partition from the middle of the top wall down to the bottom splits
+    // the top wall and tees into it from the interior (right) side.
+    const plan = addWallChain(rect12x10(), [{ x: 6 * FT, y: 0 }, { x: 6 * FT, y: 10 * FT }], style);
+    const topLeft = plan.walls.find((w) => {
+      const a = plan.nodes.find((n) => n.id === w.a)!.position;
+      const b = plan.nodes.find((n) => n.id === w.b)!.position;
+      return a.y === 0 && b.y === 0 && Math.min(a.x, b.x) === 0;
+    })!;
+    for (const target of [60, 66, 80]) {
+      const next = setClearLength(plan, topLeft.id, 'right', target * IN);
+      expect(validatePlan(next)).toEqual([]);
+      expect(clearLength(next, topLeft.id, 'right') / IN).toBeCloseTo(target, 3);
+    }
+  });
 });
 
 describe('validatePlan', () => {

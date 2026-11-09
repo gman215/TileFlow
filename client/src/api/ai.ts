@@ -162,6 +162,32 @@ export async function* streamText(
 }
 
 /**
+ * The layout anchor for people and models (011): which cut-out, by number and
+ * size so an installer can tell it is "the tub", and which part of it — in the
+ * user's units, formatted by the sidebar's helpers. Null when the layout is set
+ * out from the room or its reference wall.
+ */
+function describeAnchor(room: ReturnType<typeof useTileFlowStore.getState>['room'], sys: MeasurementSystem): string | null {
+  const a = room.shape?.anchor ?? room.anchor;
+  if (!a) return null;
+  const d = roomDisplay(sys);
+  const len = (mm: number) => formatWithUnit(mm, d);
+  if (a.kind === 'point') return 'a marked point on the floor';
+  const st = useTileFlowStore.getState();
+  // In a plan, the layout room lists free-standing islands before drawn cut-outs.
+  const pr = st.plan && st.activeRoomId ? st.plan.rooms.find((r) => r.id === st.activeRoomId) : undefined;
+  const islands = pr && st.activeRoomId ? (st.derived?.rooms.get(st.activeRoomId)?.holes.length ?? 0) - pr.holes.length : 0;
+  const hole = room.shape?.holes[a.hole];
+  if (!hole) return null;
+  const xs = hole.vertices.map((v) => v.x), ys = hole.vertices.map((v) => v.y);
+  const name = `cut-out ${a.hole - islands + 1} (${len(Math.max(...xs) - Math.min(...xs))} × ${len(Math.max(...ys) - Math.min(...ys))})`;
+  if (a.kind === 'hole-centre') return `the centre of ${name}`;
+  const p = hole.vertices[a.edge], q = hole.vertices[(a.edge + 1) % hole.vertices.length];
+  const edge = `the edge ${len(Math.hypot(q.x - p.x, q.y - p.y))} long of ${name}`;
+  return a.fullTilesFromEdge ? `${edge}, full tiles starting at that edge` : `the midpoint of ${edge}`;
+}
+
+/**
  * 004 — every figure the installation brief may state, as display strings in
  * the user's units (AC-1.1, AC-1.3).
  *
@@ -191,6 +217,7 @@ export function formatForBrief(stats: LayoutStatsDTO): BriefFormattedDTO {
     pattern: PATTERNS.find((p) => p.value === tile.pattern)?.label ?? tile.pattern,
     alignment: ALIGNMENTS.find((a) => a.value === tile.alignment)?.label ?? tile.alignment,
     referenceWall: room.referenceWall,
+    anchor: room.anchor,
   };
 }
 
@@ -340,6 +367,7 @@ export function statsDto(): LayoutStatsDTO | null {
       holeCount: summary.holeCount,
       // The wall table's label, never the raw index — see the DTO.
       referenceWall: room.shape?.referenceWall != null ? `W${room.shape.referenceWall + 1}` : null,
+      anchor: describeAnchor(room, sys),
       isDrawn: Boolean(room.shape),
     },
     tile: {

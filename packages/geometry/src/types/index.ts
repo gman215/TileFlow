@@ -73,7 +73,27 @@ export interface RoomShape {
   holes: Polygon[];
   /** Index of the wall (boundary edge i → i+1) the layout is squared to */
   referenceWall?: number;
+  /**
+   * What a fixed layout (Centre a tile / Centre a joint) is set out from, when
+   * it is a feature rather than the room: a cut-out's centre, one edge of a
+   * cut-out (the tub front), or a point. Absent = the room centre, or the
+   * reference wall's midpoint. Referenced by index so it follows its cut-out
+   * when that moves (011 R3).
+   */
+  anchor?: LayoutAnchor;
 }
+
+export type LayoutAnchor =
+  | { kind: 'hole-centre'; hole: number }
+  | {
+      kind: 'hole-edge';
+      hole: number;
+      /** Edge of that cut-out: vertex `edge` → `edge + 1` */
+      edge: number;
+      /** A grout joint along the edge, so the first full row starts there */
+      fullTilesFromEdge?: boolean;
+    }
+  | { kind: 'point'; at: Vec2 };
 
 export interface Room {
   /**
@@ -84,6 +104,12 @@ export interface Room {
   height: number;
   /** When present, the true floor outline; otherwise the room is the rectangle */
   shape?: RoomShape;
+  /**
+   * A point anchor on a plain rectangle (011). Kept here rather than on a
+   * `shape`, because giving a rectangle a shape would make it a drawn outline
+   * (locked width/height). With a shape, the anchor lives on the shape.
+   */
+  anchor?: Extract<LayoutAnchor, { kind: 'point' }>;
 }
 
 // ─── Tile Configuration ───────────────────────────────────────────────────────
@@ -183,6 +209,12 @@ export interface PlanRoom {
    * derived boundary's edge order changes whenever a wall is edited.
    */
   referenceWallId?: string;
+  /**
+   * What a fixed layout is set out from (011), in plan space; a cut-out anchor
+   * indexes `holes` above. Ignored while the room is in a pattern group, which
+   * shares one frame across its rooms.
+   */
+  anchor?: LayoutAnchor;
   tileConfig: TileConfig;
   alignment: AlignmentMode;
   weights: OptimizationWeights;

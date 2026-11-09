@@ -18,10 +18,24 @@ const PolygonSchema = z.object({
   vertices: z.array(PointSchema).min(3).max(500),
 });
 
+/** What a fixed layout is set out from (011): a cut-out's centre or edge, or a point. */
+const PointAnchorSchema = z.object({ kind: z.literal('point'), at: PointSchema });
+export const AnchorSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('hole-centre'), hole: z.number().int().min(0).max(49) }),
+  z.object({
+    kind: z.literal('hole-edge'),
+    hole: z.number().int().min(0).max(49),
+    edge: z.number().int().min(0).max(499),
+    fullTilesFromEdge: z.boolean().optional(),
+  }),
+  PointAnchorSchema,
+]);
+
 export const RoomShapeSchema = z.object({
   boundary: PolygonSchema,
   holes: z.array(PolygonSchema).max(50).default([]),
   referenceWall: z.number().int().min(0).max(499).optional(),
+  anchor: AnchorSchema.optional(),
 });
 
 export const RoomSchema = z.object({
@@ -30,6 +44,8 @@ export const RoomSchema = z.object({
   unit: z.enum(['mm', 'cm', 'm', 'inches', 'feet']).default('mm'),
   /** Omitted for a plain rectangular room */
   shape: RoomShapeSchema.nullish(),
+  /** A point anchor on a plain rectangle (011); null clears it */
+  anchor: PointAnchorSchema.nullish(),
 });
 
 export const TileConfigSchema = z.object({
@@ -39,6 +55,7 @@ export const TileConfigSchema = z.object({
   pattern: PatternSchema.default('grid'),
   alpha: z.number().min(0).max(1).default(0.7),
   beta: z.number().min(0).max(1).default(0.3),
+  alignment: z.enum(['optimize', 'center-tile', 'center-grout']).default('optimize'),
 });
 
 // ─── Floor plan (008) ─────────────────────────────────────────────────────────
@@ -153,6 +170,7 @@ export const PlanSchema = z
           holes: z.array(PolygonSchema).max(50),
           expansionGap: z.number().min(0).max(20),
           referenceWallId: Id.optional(),
+          anchor: AnchorSchema.optional(),
           tileConfig: PlanTileSchema,
           alignment: AlignmentSchema,
           weights: WeightsSchema,

@@ -18,6 +18,7 @@ import type {
   OpeningKind,
   WallFraming,
   JunctionChoice,
+  LayoutAnchor,
 } from '@tileflow/geometry';
 import {
   DEFAULT_OPTIMIZATION_CONFIG,
@@ -52,6 +53,8 @@ import {
   emptyPlan,
   wallLength,
   MM_PER_INCH,
+  anchorAfterHoleDeleted,
+  anchorAfterHoleVertexDeleted,
 } from '@tileflow/geometry';
 import type { MeasurementSystem } from '../utils/measurements';
 import { buildTemplate, type TemplateId } from './templates';
@@ -88,6 +91,43 @@ export interface ShapeDraft {
  * (`patchActive`), and the top-level fields are only a view of its active room:
  * restoring the view alone would be overwritten by the next plan commit.
  */
+// ─── Sidebar (011) ────────────────────────────────────────────────────────────
+
+export const SIDEBAR_DEFAULT_WIDTH = 312;
+export const SIDEBAR_MIN_WIDTH = 260;
+export const SIDEBAR_MAX_WIDTH = 560;
+/** The canvas never gets narrower than this, whatever the sidebar asks for. */
+export const CANVAS_MIN_WIDTH = 480;
+const RESIZER_WIDTH = 6;
+const SIDEBAR_WIDTH_KEY = 'tileflow.sidebarWidth';
+const SIDEBAR_HIDDEN_KEY = 'tileflow.sidebarHidden';
+
+/** 260–560 px, and never so wide the canvas drops below 480 px (011 AC-1.1). */
+export function clampSidebarWidth(px: number): number {
+  const viewport = typeof window === 'undefined' ? Infinity : window.innerWidth;
+  // The resizer handle takes a few pixels of its own; leave them out of the canvas's share.
+  const max = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, viewport - CANVAS_MIN_WIDTH - RESIZER_WIDTH));
+  return Math.round(Math.min(max, Math.max(SIDEBAR_MIN_WIDTH, Number.isFinite(px) ? px : SIDEBAR_DEFAULT_WIDTH)));
+}
+
+/** A per-browser number. Storage can be unavailable (private mode), so never required. */
+function readPref(key: string, fallback: number): number {
+  try {
+    const raw = localStorage.getItem(key);
+    const n = raw === null ? NaN : Number(raw);
+    return Number.isFinite(n) ? n : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function writePref(key: string, value: number): void {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    /* preference only */
+  }
+}
+
 /** The prices the estimator lets the user set (005). */
 export type EstimatePriceKey = 'tile' | 'adhesive' | 'grout' | 'labour';
 
@@ -134,6 +174,18 @@ export interface TileFlowState {
   setSystem: (s: MeasurementSystem) => void;
   setRoomWidthMM: (wMM: number) => void;
   setRoomHeightMM: (hMM: number) => void;
+  /** 011 — what a fixed layout is set out from, when it is a feature (see LayoutAnchor) */
+  setLayoutAnchor: (anchor: LayoutAnchor | null) => void;
+  /** 011 — with an edge anchor: a joint along the edge so full tiles start there */
+  setFullTilesFromEdge: (on: boolean) => void;
+  /** 011 — said once when an edit clears the anchor ("…removed with cut-out 2") */
+  anchorNotice: string | null;
+  setAnchorNotice: (text: string | null) => void;
+  /** 011 — the Anchor tool is waiting for a click on the canvas */
+  anchorPicking: boolean;
+  setAnchorPicking: (on: boolean) => void;
+  /** 011 — resize a plain rectangle as one undoable step (the inline wall field) */
+  resizeRoomRect: (wMM: number, hMM: number) => void;
 
   // ── Drawn room outline ────────────────────────────────────────────────
   /** In-progress outline, or null when not drawing */
@@ -215,6 +267,11 @@ export interface TileFlowState {
   setEstimatePrice: (key: EstimatePriceKey, value: number | null) => void;
   setEstimateTileUnit: (unit: 'tile' | 'area') => void;
   setEstimateCurrency: (symbol: string) => void;
+  /** 011 — sidebar width in px (clamped; persisted per browser) and whether it is hidden */
+  sidebarWidth: number;
+  sidebarHidden: boolean;
+  setSidebarWidth: (px: number) => void;
+  toggleSidebar: () => void;
   /** Record the current state; called before the assistant applies a turn's calls */
   captureAiSnapshot: () => void;
   /** Restore the recorded state and clear it */
@@ -544,6 +601,83 @@ export const useTileFlowStore = create<TileFlowState>()(
       set({ room: { ...room, height: hMM } });
     },
 
+    // ── Layout anchor (011 R3) ─────────────────────────────────────────
+    anchorNotice: null,
+    setAnchorNotice: (text) => set({ anchorNotice: text }),
+    anchorPicking: false,
+    setAnchorPicking: (on) => set({ anchorPicking: on }),
+    setLayoutAnchor: (anchor) => {
+      const { room, alignment, plan, activeRoomId, derived, roomOrigins } = get();
+      // In a plan, anchors arrive in the active room's layout coordinates (what
+      // the canvas tool and marker work in) and are stored in plan space on the
+      // plan room: points move by the room's origin, cut-out numbers drop the
+      // free-standing islands the layout room lists first.
+      if (plan) {
+        const pr = plan.rooms.find((r) => r.id === activeRoomId);
+        const d = activeRoomId ? derived?.rooms.get(activeRoomId) : undefined;
+        if (!pr || !d) return;
+        if (pr.groupId && anchor) {
+          set({ anchorNotice: 'Rooms in a pattern group share one layout — leave the group to anchor this room on its own.' });
+          return;
+        }
+        const islands = d.holes.length - pr.holes.length;
+        const o = (activeRoomId && roomOrigins[activeRoomId]) || { x: 0, y: 0 };
+        let planAnchor: LayoutAnchor | undefined;
+        if (anchor?.kind === 'point') planAnchor = { kind: 'point', at: { x: anchor.at.x + o.x, y: anchor.at.y + o.y } };
+        else if (anchor) {
+          if (anchor.hole < islands) {
+            set({ anchorNotice: 'That is a free-standing wall, not a cut-out — anchor on a cut-out or a spot on the floor.' });
+            return;
+          }
+          planAnchor = { ...anchor, hole: anchor.hole - islands };
+        }
+        commitPlan({ ...plan, rooms: plan.rooms.map((r) => (r.id === pr.id ? { ...r, anchor: planAnchor } : r)) });
+        set({ anchorNotice: null });
+        if (anchor && alignment === 'optimize') {
+          get().setAlignment('center-tile');
+          set({ anchorNotice: 'Switched to Centre a tile — the anchor sets the layout out from that feature.' });
+        }
+        return;
+      }
+      pushHistory(room);
+      // A point on a plain rectangle stays on the room, so the rectangle stays a
+      // rectangle; anything on a cut-out lives on the outline that holds it.
+      if (!room.shape) {
+        set({ room: { ...room, anchor: anchor?.kind === 'point' ? anchor : undefined }, anchorNotice: null });
+      } else {
+        const { anchor: _old, ...rest } = room.shape;
+        set({ room: { ...room, shape: anchor ? { ...rest, anchor } : rest }, anchorNotice: null });
+      }
+      // An anchor only means something to the fixed alignments; on Least waste
+      // it would change nothing visible and look broken (AC-3.4).
+      if (anchor && alignment === 'optimize') {
+        get().setAlignment('center-tile');
+        set({ anchorNotice: 'Switched to Centre a tile — the anchor sets the layout out from that feature.' });
+      }
+    },
+    setFullTilesFromEdge: (on) => {
+      const { room, plan, activeRoomId } = get();
+      if (plan) {
+        const pr = plan.rooms.find((r) => r.id === activeRoomId);
+        if (pr?.anchor?.kind !== 'hole-edge') return;
+        commitPlan({ ...plan, rooms: plan.rooms.map((r) => (r.id === pr.id ? { ...r, anchor: { ...pr.anchor as Extract<LayoutAnchor, { kind: 'hole-edge' }>, fullTilesFromEdge: on } } : r)) });
+        return;
+      }
+      const a = room.shape?.anchor;
+      if (!room.shape || a?.kind !== 'hole-edge') return;
+      pushHistory(room);
+      set({ room: { ...room, shape: { ...room.shape, anchor: { ...a, fullTilesFromEdge: on } } } });
+    },
+
+    // Width/height above stay history-free for the sidebar's live nudging; a
+    // typed length on the wall is a deliberate edit, so it is one undo step.
+    resizeRoomRect: (wMM: number, hMM: number) => {
+      const { room } = get();
+      if (room.shape) return;
+      pushHistory(room);
+      set({ room: { ...room, width: wMM, height: hMM } });
+    },
+
     // ── Drawn room outline ────────────────────────────────────────────
     draft: null,
     selectedWall: null,
@@ -695,27 +829,46 @@ export const useTileFlowStore = create<TileFlowState>()(
               ),
             };
 
+      // A corner of a cut-out going can take an edge anchor's edge with it.
+      if (ring > 0) {
+        const { anchor, cleared } = anchorAfterHoleVertexDeleted(
+          current.anchor, ring - 1, index, current.holes[ring - 1]?.vertices.length ?? 0
+        );
+        const { anchor: _a, ...rest } = next;
+        set({
+          room: roomFromShape(anchor ? { ...rest, anchor } : rest),
+          anchorNotice: cleared ? 'Anchor removed — its edge changed.' : get().anchorNotice,
+        });
+        return;
+      }
       set({ room: roomFromShape(next) });
     },
 
     deleteHole: (holeIndex) => {
       const { room, plan, activeRoomId } = get();
       if (plan) {
+        const pr = plan.rooms.find((r) => r.id === activeRoomId);
+        const { anchor, cleared } = anchorAfterHoleDeleted(pr?.anchor, holeIndex);
         commitPlan({
           ...plan,
           rooms: plan.rooms.map((r) =>
-            r.id === activeRoomId ? { ...r, holes: r.holes.filter((_, i) => i !== holeIndex) } : r
+            r.id === activeRoomId ? { ...r, anchor, holes: r.holes.filter((_, i) => i !== holeIndex) } : r
           ),
         });
+        if (cleared) set({ anchorNotice: `Anchor removed with cut-out ${holeIndex + 1}.` });
         return;
       }
       const current = shapeOf(room);
       pushHistory(room);
+      const { anchor, cleared } = anchorAfterHoleDeleted(current.anchor, holeIndex);
+      const { anchor: _a, ...rest } = current;
       set({
         room: roomFromShape({
-          ...current,
+          ...rest,
+          ...(anchor ? { anchor } : {}),
           holes: current.holes.filter((_, i) => i !== holeIndex),
         }),
+        anchorNotice: cleared ? `Anchor removed with cut-out ${holeIndex + 1}.` : get().anchorNotice,
       });
     },
 
@@ -834,6 +987,20 @@ export const useTileFlowStore = create<TileFlowState>()(
           weights: { ...get().optimizationConfig.weights, beta: b },
         },
       });
+    },
+
+    // Sidebar (011) — a per-browser preference, so localStorage, not the project.
+    sidebarWidth: clampSidebarWidth(readPref(SIDEBAR_WIDTH_KEY, SIDEBAR_DEFAULT_WIDTH)),
+    sidebarHidden: readPref(SIDEBAR_HIDDEN_KEY, 0) === 1,
+    setSidebarWidth: (px) => {
+      const width = clampSidebarWidth(px);
+      writePref(SIDEBAR_WIDTH_KEY, width);
+      set({ sidebarWidth: width });
+    },
+    toggleSidebar: () => {
+      const hidden = !get().sidebarHidden;
+      writePref(SIDEBAR_HIDDEN_KEY, hidden ? 1 : 0);
+      set({ sidebarHidden: hidden });
     },
 
     // Cost estimator prices (005) — session only, never persisted

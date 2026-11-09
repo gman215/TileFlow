@@ -5,7 +5,7 @@ import { useTileFlowStore } from '../../store/tileFlowStore';
  * One line that always says what the current tool does and what to do next
  * (010 R2) — the status-line prompt CAD tools use, so nobody has to guess.
  */
-export function useHint(rectActive: boolean): string {
+export function useHint(rectActive: boolean, anchorPicking = false): string {
   const plan = useTileFlowStore((s) => s.plan);
   const derived = useTileFlowStore((s) => s.derived);
   const planTool = useTileFlowStore((s) => s.planTool);
@@ -17,6 +17,8 @@ export function useHint(rectActive: boolean): string {
   const activeRoomId = useTileFlowStore((s) => s.activeRoomId);
 
   if (editMode) return 'Drag any tile to nudge it · click Edit tiles again when done';
+  if (anchorPicking)
+    return 'Anchor: click inside a cut-out to centre on it · click its edge to start from it · or click any spot on the floor · Esc cancels';
 
   if (!plan) {
     if (draft?.kind === 'boundary')

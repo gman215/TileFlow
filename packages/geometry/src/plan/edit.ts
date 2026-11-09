@@ -312,7 +312,16 @@ export function clearLength(plan: Plan, wallId: string, side: 'left' | 'right'):
   return dist(p, q);
 }
 
-/** Retype a wall's clear length on one side (the measured-with-a-tape number). */
+/**
+ * Retype a wall's clear length on one side (the measured-with-a-tape number).
+ *
+ * The clear length does not always move one-for-one with the drawn length:
+ * where another wall tees into this one, the face on that side is cut short by
+ * a junction that itself shifts as the wall grows. A single proportional step
+ * landed 2–8 mm off on such a side (found in 011). So step, re-measure with the
+ * real geometry, and step again — the residual shrinks fast, and the loop is
+ * bounded so a wall that cannot reach the target returns its best attempt.
+ */
 export function setClearLength(
   plan: Plan,
   wallId: string,
@@ -321,8 +330,16 @@ export function setClearLength(
 ): Plan {
   const wall = plan.walls.find((w) => w.id === wallId);
   if (!wall || target <= 0) return plan;
-  const diff = target - clearLength(plan, wallId, side);
-  return setPlanWallLength(plan, wallId, wallLength(plan, wall) + diff);
+  let next = plan;
+  for (let i = 0; i < 8; i++) {
+    const diff = target - clearLength(next, wallId, side);
+    if (Math.abs(diff) < 0.01) break;
+    const w = next.walls.find((x) => x.id === wallId)!;
+    const stepped = setPlanWallLength(next, wallId, wallLength(next, w) + diff);
+    if (stepped === next) break;
+    next = stepped;
+  }
+  return next;
 }
 
 // ─── Wall properties ──────────────────────────────────────────────────────────

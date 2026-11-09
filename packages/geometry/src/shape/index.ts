@@ -6,9 +6,10 @@
  * lengths are mm and all polygons are implicitly closed.
  */
 
-import { Polygon, Room, RoomShape, Vec2 } from '../types';
+import { LayoutAnchor, PatternType, Polygon, Room, RoomShape, Vec2 } from '../types';
 import {
   polygonArea,
+  polygonCentroid,
   polygonPerimeter,
   normalizeShape,
   pointInPolygon,
@@ -220,35 +221,155 @@ export function validateShape(shape: RoomShape): ShapeIssue[] {
   return issues;
 }
 
+
+// ─── Keeping an anchor true through edits (011 AC-3.5) ────────────────────────
+
+/**
+ * The anchor after cut-out `holeIndex` is deleted: cleared if it was on that
+ * cut-out, renumbered if it was on a later one. Returned with whether it was
+ * cleared, so the caller can say so.
+ */
+export function anchorAfterHoleDeleted(
+  anchor: LayoutAnchor | undefined,
+  holeIndex: number
+): { anchor: LayoutAnchor | undefined; cleared: boolean } {
+  if (!anchor || anchor.kind === 'point') return { anchor, cleared: false };
+  if (anchor.hole === holeIndex) return { anchor: undefined, cleared: true };
+  return { anchor: anchor.hole > holeIndex ? { ...anchor, hole: anchor.hole - 1 } : anchor, cleared: false };
+}
+
+/**
+ * The anchor after corner `vertexIndex` of cut-out `holeIndex` is deleted
+ * (from a ring of `vertexCount` corners). The two edges meeting at that corner
+ * become one new edge, so an edge anchor on either is cleared — it no longer
+ * names the line the user picked; later edges are renumbered.
+ */
+export function anchorAfterHoleVertexDeleted(
+  anchor: LayoutAnchor | undefined,
+  holeIndex: number,
+  vertexIndex: number,
+  vertexCount: number
+): { anchor: LayoutAnchor | undefined; cleared: boolean } {
+  if (anchor?.kind !== 'hole-edge' || anchor.hole !== holeIndex || vertexCount <= 3) return { anchor, cleared: false };
+  const before = (vertexIndex - 1 + vertexCount) % vertexCount;
+  if (anchor.edge === vertexIndex || anchor.edge === before) return { anchor: undefined, cleared: true };
+  return { anchor: anchor.edge > vertexIndex ? { ...anchor, edge: anchor.edge - 1 } : anchor, cleared: false };
+}
+
+/**
+ * Why the anchor needs attention, or null. Flagged, not refused: a point that
+ * ends up outside the floor after an edit still lays the tile out from where
+ * it is, and the user decides whether to move it.
+ */
+export function anchorIssue(shape: RoomShape): string | null {
+  const a = shape.anchor;
+  if (!a) return null;
+  if (a.kind === 'point') {
+    const onFloor = pointInPolygon(a.at, shape.boundary) && !shape.holes.some((h) => pointInPolygon(a.at, h));
+    return onFloor ? null : 'The layout anchor is outside the floor — drag it back, or clear it.';
+  }
+  if (!shape.holes[a.hole]) return 'The layout anchor\'s cut-out no longer exists.';
+  return null;
+}
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
+
+/** Fold an angle into ±45° so a quarter turn never spins the layout. */
+function foldQuarter(angle: number): number {
+  const quarter = Math.PI / 2;
+  return (((angle + Math.PI / 4) % quarter) + quarter) % quarter - Math.PI / 4;
+}
+
+/** The reference wall's frame, or undefined. */
+function referenceFrame(shape: RoomShape): { origin: Vec2; angle: number } | undefined {
+  if (shape.referenceWall == null) return undefined;
+  const wall = wallsOf(shape.boundary)[shape.referenceWall];
+  if (!wall || wall.length < 1e-9) return undefined;
+  return {
+    origin: { x: (wall.a.x + wall.b.x) / 2, y: (wall.a.y + wall.b.y) / 2 },
+    angle: foldQuarter(wall.angle),
+  };
+}
+
+/** The edge an edge anchor names, or null when it no longer exists. */
+function anchorEdge(shape: RoomShape, anchor: Extract<LayoutAnchor, { kind: 'hole-edge' }>): [Vec2, Vec2] | null {
+  const v = shape.holes[anchor.hole]?.vertices;
+  if (!v || v.length < 3 || anchor.edge < 0 || anchor.edge >= v.length) return null;
+  const a = v[anchor.edge];
+  const b = v[(anchor.edge + 1) % v.length];
+  return Math.hypot(b.x - a.x, b.y - a.y) < 1e-9 ? null : [a, b];
+}
+
+/**
+ * The anchor's origin and direction, or undefined when there is no anchor or
+ * it names a cut-out that no longer exists (the layout then falls back to the
+ * room, rather than to a stale point).
+ */
+export function resolveAnchor(shape: RoomShape): { origin: Vec2; angle: number } | undefined {
+  const anchor = shape.anchor;
+  if (!anchor) return undefined;
+  // Centre and point anchors keep the room's direction — squared to the
+  // reference wall if one is picked, else axis-aligned.
+  const angle = referenceFrame(shape)?.angle ?? 0;
+  if (anchor.kind === 'point') return { origin: anchor.at, angle };
+  if (anchor.kind === 'hole-centre') {
+    const hole = shape.holes[anchor.hole];
+    return hole && hole.vertices.length >= 3 ? { origin: polygonCentroid(hole), angle } : undefined;
+  }
+  // An edge anchor squares the grid to that edge: the tub front, not the wall.
+  const edge = anchorEdge(shape, anchor);
+  if (!edge) return undefined;
+  const [a, b] = edge;
+  return { origin: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, angle: foldQuarter(Math.atan2(b.y - a.y, b.x - a.x)) };
+}
 
 /**
  * The frame the pattern is set out from.
  *
- * With a reference wall picked, the grid runs parallel to that wall and is
- * anchored on its midpoint — how a floor is actually set out, squared to the
- * main sight line rather than to the bounding box. The angle is folded into
- * ±45° so picking any wall of a rectangle gives the same layout instead of
- * spinning it a quarter turn.
+ * With an anchor (011), the grid is set out from that feature. Otherwise, with
+ * a reference wall picked, the grid runs parallel to that wall and is anchored
+ * on its midpoint — how a floor is actually set out, squared to the main sight
+ * line rather than to the bounding box. Angles are folded into ±45° so picking
+ * any wall of a rectangle gives the same layout instead of spinning it a
+ * quarter turn.
  */
 export function patternFrameFor(
   room: Room
 ): { origin: Vec2; angle: number } | undefined {
   const shape = room.shape;
-  if (!shape || shape.referenceWall == null) return undefined;
+  if (!shape) return room.anchor ? { origin: room.anchor.at, angle: 0 } : undefined;
+  return resolveAnchor(shape) ?? referenceFrame(shape);
+}
 
-  const walls = wallsOf(shape.boundary);
-  const wall = walls[shape.referenceWall];
-  if (!wall || wall.length < 1e-9) return undefined;
-
-  const quarter = Math.PI / 2;
-  const folded =
-    (((wall.angle + Math.PI / 4) % quarter) + quarter) % quarter - Math.PI / 4;
-
-  return {
-    origin: { x: (wall.a.x + wall.b.x) / 2, y: (wall.a.y + wall.b.y) / 2 },
-    angle: folded,
-  };
+/**
+ * For an edge anchor with "full tiles from this edge": which frame axis runs
+ * along the edge. The other axis gets a joint on the edge. Null when the rule
+ * does not apply, with the reason the UI shows (011 AC-3.6).
+ *
+ * The frame's angle is the edge's folded into ±45°, so the edge runs along the
+ * frame's x axis unless folding turned it a quarter, when it runs along y.
+ * Grid works either way. Offset patterns stagger their rows along x, so an
+ * edge across the rows would start a full tile on every other row only.
+ * Herringbone and 45° diagonal have no joint parallel to the edge at all.
+ */
+export function fullTilesFromEdgeAxis(
+  shape: RoomShape | undefined,
+  pattern: PatternType
+): { along: 'x' | 'y' } | { along: null; reason: string } {
+  const anchor = shape?.anchor;
+  if (!shape || anchor?.kind !== 'hole-edge') return { along: null, reason: 'Pick an edge of a cut-out first.' };
+  const edge = anchorEdge(shape, anchor);
+  if (!edge) return { along: null, reason: 'That cut-out edge no longer exists.' };
+  if (pattern === 'herringbone' || pattern === 'diagonal-45') {
+    return { along: null, reason: 'Herringbone and 45° diagonal have no joint that runs along an edge.' };
+  }
+  const raw = Math.atan2(edge[1].y - edge[0].y, edge[1].x - edge[0].x);
+  const quarters = Math.round((raw - foldQuarter(raw)) / (Math.PI / 2));
+  const along = Math.abs(quarters) % 2 === 1 ? 'y' : 'x';
+  if (along === 'y' && pattern !== 'grid') {
+    return { along: null, reason: 'Offset rows run across this edge, so only every other row would start full. Use Grid, or an edge along the rows.' };
+  }
+  return { along };
 }
 
 export interface ShapeSummary {

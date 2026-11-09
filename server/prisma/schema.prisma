@@ -36,8 +36,10 @@ model Room {
   height Float
   /// Display unit preference
   unit   String @default("mm")
-  /// Drawn outline: { boundary, holes, referenceWall }. Null = plain rectangle.
+  /// Drawn outline: { boundary, holes, referenceWall, anchor }. Null = plain rectangle.
   shape  Json?
+  /// A point anchor on a plain rectangle (011). With a shape, the anchor is in the shape.
+  anchor Json?
 }
 
 model TileConfig {
@@ -53,6 +55,8 @@ model TileConfig {
   grout  Float  @default(3.0)
   /// Pattern type: grid, offset-1/2, offset-1/3, herringbone, diagonal-45
   pattern String @default("grid")
+  /// Alignment: optimize, center-tile, center-grout (011 — anchors need it saved)
+  alignment String @default("optimize")
 
   /// Optimization weight α (min cut area preference)
   alpha Float @default(0.7)

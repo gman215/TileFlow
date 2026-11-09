@@ -17,6 +17,7 @@ export function useProjectActions() {
   const system = useTileFlowStore((s) => s.system);
   const tileConfig = useTileFlowStore((s) => s.tileConfig);
   const optimizationConfig = useTileFlowStore((s) => s.optimizationConfig);
+  const alignment = useTileFlowStore((s) => s.alignment);
   const plan = useTileFlowStore((s) => s.plan);
 
   const [saving, setSaving] = useState(false);
@@ -36,6 +37,8 @@ export function useProjectActions() {
           // null rather than undefined so saving a room that used to have an
           // outline actually clears it server-side.
           shape: room.shape ?? null,
+          // A point anchor on a plain rectangle (011); null clears an old one.
+          anchor: room.anchor ?? null,
         },
         tileConfig: {
           width: tileConfig.width,
@@ -44,6 +47,7 @@ export function useProjectActions() {
           pattern: tileConfig.pattern,
           alpha: optimizationConfig.weights.alpha,
           beta: optimizationConfig.weights.beta,
+          alignment,
         },
         // In a plan, room/tileConfig above are the active room's; the plan is
         // the source of truth. null clears a plan the project used to have.
@@ -112,6 +116,7 @@ export function useProjectActions() {
             boundary: shape.boundary,
             holes: shape.holes ?? [],
             referenceWall: shape.referenceWall,
+            ...(shape.anchor ? { anchor: shape.anchor } : {}),
           });
         } else {
           // Back to a plain rectangle first — width/height are read-only while
@@ -119,6 +124,10 @@ export function useProjectActions() {
           store.setRoomShape(undefined);
           store.setRoomWidthMM(latest.room.width);
           store.setRoomHeightMM(latest.room.height);
+          if (latest.room.anchor?.kind === 'point') {
+            const r = useTileFlowStore.getState().room;
+            useTileFlowStore.setState({ room: { ...r, anchor: latest.room.anchor } });
+          }
         }
         store.setSystem(systemForUnit(latest.room.unit as any));
       }
@@ -134,6 +143,9 @@ export function useProjectActions() {
         });
         useTileFlowStore.getState().setAlpha(tc.alpha);
         useTileFlowStore.getState().setBeta(tc.beta);
+        if (tc.alignment === 'optimize' || tc.alignment === 'center-tile' || tc.alignment === 'center-grout') {
+          useTileFlowStore.getState().setAlignment(tc.alignment);
+        }
       }
       setMessage(`Loaded: ${latest.name}`);
       setTimeout(() => setMessage(''), 3000);
