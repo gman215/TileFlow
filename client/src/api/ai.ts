@@ -21,6 +21,9 @@ import type {
   AiHealthDTO,
   BriefFormattedDTO,
   BriefRequestDTO,
+  EstimateDTO,
+  EstimatePricesDTO,
+  EstimateRequestDTO,
   AssistantRequestDTO,
   AssistantResponseDTO,
   LayoutStatsDTO,
@@ -218,6 +221,31 @@ export function buildBriefRequest(): BriefRequestDTO | null {
   };
 }
 
+/**
+ * 005 — the estimate request for the layout on screen, or null without one.
+ *
+ * `engine` carries the two quantities the engine owns as plain numbers in the
+ * user's units. The area uses exactly the stats card's rounding (`formatArea`),
+ * so the area a line is echoed and overridden with is the area the user reads.
+ */
+export function buildEstimateRequest(prices: EstimatePricesDTO, currency: string): EstimateRequestDTO | null {
+  const stats = statsDto();
+  if (!stats) return null;
+  const imperial = stats.system === 'imperial';
+  return {
+    stats,
+    formatted: formatForBrief(stats),
+    engine: {
+      orderQuantity: stats.layout.orderQuantity,
+      roomArea: Number(formatArea(stats.layout.roomAreaMm2, stats.system).split(' ')[0]),
+      areaUnit: imperial ? 'ft²' : 'm²',
+    },
+    prices,
+    currency,
+    system: stats.system,
+  };
+}
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
 //
 // Feature routes are added by the spec that owns each:
@@ -253,6 +281,13 @@ export const ai = {
     streamText('/brief', body, signal, (res) => {
       if (res.headers.get('X-Demo-Mode') === 'true') onDemo?.();
     }),
+
+  /**
+   * 005 — quantities and unit rates for the layout; never a total. The caller
+   * re-validates the shape and does all the arithmetic (`client/src/ai/estimate.ts`).
+   */
+  estimate: (body: EstimateRequestDTO, signal?: AbortSignal) =>
+    request<EstimateDTO>('/estimate', { method: 'POST', body: JSON.stringify(body), signal }),
 
   roomFromImage: (body: RoomFromImageRequestDTO, signal?: AbortSignal) =>
     request<RoomFromImageDTO>('/room-from-image', {

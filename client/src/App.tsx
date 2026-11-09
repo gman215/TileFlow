@@ -11,6 +11,7 @@ import StartCard from './components/StartCard';
 import TilePanel from './components/Controls/TilePanel';
 import OptimizationPanel from './components/Controls/OptimizationPanel';
 import AssistantPanel from './components/AI/AssistantPanel';
+import EstimatePanel from './components/AI/EstimatePanel';
 import StatsPanel from './components/Controls/StatsPanel';
 import ProjectPanel from './components/Controls/ProjectPanel';
 import { useTileFlowStore } from './store/tileFlowStore';
@@ -133,6 +134,7 @@ export default function App() {
           <TilePanel />
           <OptimizationPanel />
           <AssistantPanel />
+          <EstimatePanel />
           {inPlan && <TakeoffPanel />}
           <ProjectPanel />
         </aside>
