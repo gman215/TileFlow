@@ -96,11 +96,14 @@ for 90 seconds.
       Constitution I and II).
 - [ ] Confirm the deployed demo works end-to-end with `GEMINI_API_KEY` set in Vercel project
       settings, and that it falls back to demo mode rather than erroring when the cap trips.
-      *Checked 2026-11-08: **fails.** Live `POST /api/ai/brief` returned 200 with an empty body
-      after 60.8 s — the deployed fast model, `gemini-3.8-flash`, opens the stream and never
-      writes. The fix is a setting: `GEMINI_MODEL_FAST=gemini-3.5-flash-lite` in Vercel, the model
-      003–005 were verified on. The cap trip was verified in dev (`AI_DAILY_CALL_BUDGET=0`), not on
-      the deployment — tripping it there means spending the day's budget.*
+      *Checked 2026-11-08. First run **failed**: the deployed fast model, `gemini-3.8-flash`, opened
+      the brief stream and wrote nothing for 60.8 s. After the default moved to
+      `gemini-3.5-flash-lite` (`1bd4995`), the `docs/DEMO.md` walkthrough **passed end to end on
+      the live site**: plan photo → 15.70 m² outline → assistant (60 × 30 cm, ½ offset) → brief →
+      estimate, no page errors. One defect surfaced: once, the assistant reset the drawn outline
+      to a rectangle without being asked (0 of 15 reproductions since) — guard pending.
+      Still open: the cap trip on the deployment itself (verified in dev with
+      `AI_DAILY_CALL_BUDGET=0`; tripping it live means spending the day's budget).*
 - [ ] Confirm the deployed demo still works with the key *removed* — the planner must be fully
       functional for a visitor who arrives after the budget is spent.
       *Needs Vercel project access to remove the key. The equivalent was verified in dev for every
