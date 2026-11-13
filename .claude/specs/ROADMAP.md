@@ -47,11 +47,11 @@ other and can be built in any order; the order below is by demo impact.
 | 009 | [wall-framing](009-wall-framing/) | `feat/009-wall-framing` | **Complete (14/14)** — studs, openings, junction backing, takeoff, elevations; verified in browser and against Postgres | — | — |
 | 011 | [layout-control](011-layout-control/) | `feat/011-layout-control` | **Complete (13/13)** — resizable sidebar, edit a wall's length on the wall, centre the layout on a feature (cut-out centre or edge, or a point) with full tiles from an edge; verified in the browser and against Postgres | — | — |
 | 012 | [installer-output](012-installer-output/) | `feat/012-installer-output` | **Complete (8/8)** — dimensioned cut list (drawer, CSV, letters on the plan), printable set-out sheet with dimensioned start lines (PDF via the browser), order by the box; verified in the browser and against Postgres | — | — |
-| 013 | patterns-and-shapes *(proposed)* | — | Proposed — basketweave, chevron, windmill, Versailles, hexagon, checkerboard, ¼ offset, random plank; 33 % plank-offset warning | — | — |
+| 013 | [patterns-and-shapes](013-patterns-and-shapes/) | `feat/013-patterns-and-shapes` | **Complete (6/6)** — ¼ offset, basketweave, checkerboard (two colours, ordered apart), hexagon; the 33 % offset rule (ANSI A108.02); verified in the browser and against Postgres. Windmill, Versailles, chevron and random plank moved to 017 (they need several tiles per room) | — | — |
 | 014 | wall-tiling *(proposed)* | — | Proposed — showers, tub surrounds, backsplashes as tiled elevations with openings | — | — |
 | 015 | ordering-accuracy *(proposed)* | — | Proposed — choosable buffer, offcut reuse, attic stock, boxes across surfaces | — | — |
 | 016 | shower-floors *(proposed)* | — | Proposed — drains, slope, envelope cuts, curbs, niches; movement joints (EJ171) | — | — |
-| 017 | borders-and-mixed *(proposed)* | — | Proposed — borders, feature strips, inlays, several tiles per room | — | — |
+| 017 | borders-and-mixed *(proposed)* | — | Proposed — borders, feature strips, inlays, several tiles per room; windmill/pinwheel, Versailles, chevron and random plank (from 013) | — | — |
 | 018 | on-site-use *(proposed)* | — | Proposed — tablet/phone layout, offline PWA | — | — |
 | 019 | visuals *(proposed)* | — | Proposed — tile images, grout colour, customer PDF quote, 3D later | — | — |
 
@@ -66,7 +66,7 @@ auto-deploys the live demo, so it stays clean.
 ## Next: from the competitive analysis
 
 See [`COMPETITIVE-ANALYSIS.md`](COMPETITIVE-ANALYSIS.md) — 11 competing tools compared for tile
-installation. Recommended order: 011 → 012 → 013 → 014 → 015 → 016 → 017 → 018 → 019. 011 and 012 are done.
+installation. Recommended order: 011 → 012 → 013 → 014 → 015 → 016 → 017 → 018 → 019. 011, 012 and 013 are done.
 
 ## Feature summaries
 

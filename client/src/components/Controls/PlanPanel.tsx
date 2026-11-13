@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import type { LocationLine } from '@tileflow/geometry';
+import type { LocationLine, TileConfig } from '@tileflow/geometry';
 import { polygonArea, polygonPerimeter, totalThickness, IMPERIAL_ASSEMBLY_IDS, METRIC_ASSEMBLY_IDS } from '@tileflow/geometry';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import { tileTotals } from '../../store/planHelpers';
 import { productBoxes } from '../../utils/boxes';
 import { formatDisplayFromMM, groutDisplay, roomDisplay, tileDisplay } from '../../utils/measurements';
-import { orderQuantity } from '../../api/ai';
+import { rowOrders, COLOUR_NAMES } from '../../utils/order';
 import DimensionField from './DimensionField';
 import InfoTip from './InfoTip';
 
@@ -346,7 +346,7 @@ export default function PlanPanel() {
             <div key={t.label} className="rounded-md bg-[#F0EFEB] px-2 py-1 text-[11px]">
               <div className="flex justify-between text-ink">
                 <span className="truncate">{t.label}</span>
-                <span className="font-mono font-medium">{orderQuantity(t.tiles)}</span>
+                <span className="font-mono font-medium">{rowOrders(t).reduce((a, b) => a + b, 0)}</span>
               </div>
               <div className="text-[10px] text-ink-muted">
                 {t.rooms.join(', ')} · {t.tiles} tiles · {t.cuts} cut · {area(t.area)}
@@ -371,12 +371,12 @@ function ProjectBoxes({
   rows,
   fmt,
 }: {
-  rows: { tileConfig: { width: number; height: number }; tiles: number }[];
+  rows: { tileConfig: TileConfig; tiles: number; colours?: number[] }[];
   fmt: (mm: number) => string;
 }) {
   const boxSizes = useTileFlowStore((s) => s.boxSizes);
   const products = productBoxes(
-    rows.map((r) => ({ tileConfig: r.tileConfig, order: orderQuantity(r.tiles) })),
+    rows.map((r) => ({ tileConfig: r.tileConfig, orders: rowOrders(r) })),
     boxSizes
   );
   if (products.length === 0) return null;
@@ -385,7 +385,8 @@ function ProjectBoxes({
       {products.map((p) => (
         <div key={p.key} className="flex justify-between rounded-md bg-[#E8F0EC] px-2 py-1 text-[11px] text-ink">
           <span className="truncate">
-            {fmt(p.tile.width)} × {fmt(p.tile.height)} · {p.perBox}/box
+            {fmt(p.tile.width)} × {fmt(p.tile.height)}
+            {p.colour !== undefined && ` ${COLOUR_NAMES[p.colour].toLowerCase()}`} · {p.perBox}/box
           </span>
           <span>
             <span className="font-mono font-medium">{p.boxes.boxes}</span> boxes{' '}

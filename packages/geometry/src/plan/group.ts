@@ -17,6 +17,7 @@ import {
   PatternGroup,
   TileConfig,
   Vec2,
+  tileFaceArea,
 } from '../types';
 import { computeLayout, candidateStep } from '../optimization';
 import { computeAlignmentOffset, getPatternUnit, type PatternFrame } from '../patterns';
@@ -73,7 +74,7 @@ export function localFrame(frame: PatternFrame, origin: Vec2): PatternFrame {
  * waste over the summed floor, and the smallest cut anywhere in the group.
  */
 function groupScore(layouts: LayoutResult[], tileConfig: TileConfig, weights: OptimizationWeights): number {
-  const tileArea = tileConfig.width * tileConfig.height;
+  const tileArea = tileFaceArea(tileConfig);
   let count = 0;
   let cuts = 0;
   let covered = 0;

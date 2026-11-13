@@ -167,6 +167,8 @@ export interface TileTotal {
   cuts: number;
   area: number;
   rooms: string[];
+  /** Two-colour patterns: tiles placed per colour, light then dark (013) */
+  colours?: number[];
 }
 
 /**
@@ -188,6 +190,10 @@ export function tileTotals(
     const key = `${tileConfig.width.toFixed(3)}×${tileConfig.height.toFixed(3)}|${tileConfig.pattern}`;
     const row = rows.get(key) ?? { key, tileConfig, tiles: 0, cuts: 0, area: 0, rooms: [] };
     row.tiles += layout.fullTileCount + layout.cutTileCount;
+    if (layout.variantCounts) {
+      const add = layout.variantCounts.map((c) => c.full + c.cut);
+      row.colours = row.colours ? row.colours.map((n, i) => n + add[i]) : add;
+    }
     row.cuts += layout.cutTileCount;
     row.area += layout.roomArea;
     row.rooms.push(r.name);

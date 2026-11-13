@@ -2,9 +2,10 @@ import React from 'react';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import {
   generateTiles,
+  basketweaveBlock,
   toMM,
   type PatternType,
-  type Polygon,
+  type TilePolygon,
 } from '@tileflow/geometry';
 import { groutDisplay, tileDisplay } from '../../utils/measurements';
 import DimensionField from './DimensionField';
@@ -12,11 +13,33 @@ import { productKey, parseBoxSize, boxArea } from '../../utils/boxes';
 
 export const PATTERNS: { value: PatternType; label: string }[] = [
   { value: 'grid', label: 'Grid' },
+  { value: 'checkerboard', label: 'Checkerboard' },
   { value: 'offset-1/2', label: '½ Offset' },
   { value: 'offset-1/3', label: '⅓ Offset' },
+  { value: 'offset-1/4', label: '¼ Offset' },
   { value: 'herringbone', label: 'Herringbone' },
+  { value: 'basketweave', label: 'Basketweave' },
   { value: 'diagonal-45', label: '45° Diagonal' },
+  { value: 'hexagon', label: 'Hexagon' },
 ];
+
+/**
+ * ANSI A108.02: tiles with a side over 18 in → running bond at most 33 % (013 R3).
+ * Rows stagger along the tile's width, so it applies when the width is that
+ * long side — 24 × 12 laid ↔. Laid ↕, a ½ offset staggers the short side and
+ * long edges never slide past each other.
+ */
+export const LONG_TILE_MM = 18 * 25.4;
+export function overOffsetWarning(t: { width: number; height: number; pattern: PatternType }): boolean {
+  return t.pattern === 'offset-1/2' && t.width > LONG_TILE_MM + 0.01 && t.width >= t.height;
+}
+
+/** Basketweave fits when long + g = k × (short + g), within 5 % — the herringbone test's tolerance. */
+export function basketweaveMismatch(t: { width: number; height: number; grout: number; pattern: PatternType }): boolean {
+  if (t.pattern !== 'basketweave') return false;
+  const { L, S, k } = basketweaveBlock({ ...t });
+  return Math.abs(L - k * S) > S * 0.05 || L / S < 1.5;
+}
 
 
 interface SizePreset {
@@ -67,11 +90,17 @@ const PatternPreview = React.memo(
     const VIEW_W = 64;
     const VIEW_H = 36;
 
-    const polys = React.useMemo<Polygon[]>(
+    const polys = React.useMemo<TilePolygon[]>(
       () =>
         generateTiles({
-          // w = 2h + g so the herringbone preview fits exactly
-          tileConfig: { width: 17, height: 8, grout: 1, pattern },
+          // w = 2h + g so the herringbone and basketweave previews fit exactly;
+          // squares for the checkerboard, a small hexagon for the hexagon.
+          tileConfig:
+            pattern === 'hexagon'
+              ? { width: 10, height: 10, grout: 1, pattern }
+              : pattern === 'checkerboard'
+                ? { width: 8, height: 8, grout: 1, pattern }
+                : { width: 17, height: 8, grout: 1, pattern },
           areaWidth: VIEW_W,
           areaHeight: VIEW_H,
           offsetX: pattern === 'diagonal-45' ? 0 : -4,
@@ -92,7 +121,7 @@ const PatternPreview = React.memo(
           <polygon
             key={i}
             points={p.vertices.map((v) => `${v.x},${v.y}`).join(' ')}
-            fill={active ? '#8FB3D9' : '#9A9892'}
+            fill={p.variant === 1 ? (active ? '#4E7299' : '#6B6963') : active ? '#8FB3D9' : '#9A9892'}
           />
         ))}
       </svg>
@@ -134,6 +163,9 @@ export default function TilePanel() {
     : { label: '60 × 30 cm', w: 600, h: 300 };
 
   const isLandscape = tileConfig.width >= tileConfig.height;
+  const hexagon = tileConfig.pattern === 'hexagon';
+  const weaveMismatch = basketweaveMismatch(tileConfig);
+  const longTile = overOffsetWarning(tileConfig);
 
   return (
     <div className="px-4 py-4 space-y-2.5">
@@ -159,7 +191,19 @@ export default function TilePanel() {
         ))}
       </div>
 
-      {/* Size */}
+      {/* Size — a hexagon has one: across the flats (013 AC-1.4) */}
+      {hexagon ? (
+        <DimensionField
+          label="Across flats"
+          mm={tileConfig.width}
+          unit={tileFmt.unit}
+          imperialFormat={tileFmt.imperialFormat}
+          onChangeMM={(wMM) => setTileSizeMM(wMM, wMM)}
+          minMM={10}
+          stepMM={imperial ? toMM(1, 'inches') : 10}
+          title="Hexagon size, measured flat side to flat side"
+        />
+      ) : (
       <div className="flex items-center gap-1.5">
         <DimensionField
           label="W"
@@ -184,10 +228,12 @@ export default function TilePanel() {
           title="Tile height"
         />
       </div>
+      )}
 
       <BoxField />
 
       {/* Tile orientation — swaps W/H (e.g. 12×24 ↔ 24×12) */}
+      {!hexagon && (
       <div className="flex items-center gap-1.5">
         <span className="text-[10px] font-semibold text-ink-muted w-10 shrink-0">
           Lay
@@ -211,6 +257,7 @@ export default function TilePanel() {
           ↕ Vertical
         </button>
       </div>
+      )}
 
       {/* Grout */}
       <div className="flex items-center gap-1.5">
@@ -276,6 +323,40 @@ export default function TilePanel() {
           >
             Use {herringbonePreset.label}
           </button>
+        </div>
+      )}
+
+      {weaveMismatch && (
+        <div className="rounded-lg border border-amber-500/50 bg-amber-50 p-2 space-y-1.5">
+          <p className="text-[11px] text-amber-800 leading-snug">
+            Basketweave fits when the tile's length is two (or three) widths, grout included —
+            a 2:1 or 3:1 tile. This size will leave gaps between the blocks.
+          </p>
+          <button
+            onClick={() => setTileSizeMM(herringbonePreset.w, herringbonePreset.h)}
+            className="px-2 py-1 text-[11px] font-medium rounded-lg bg-amber-100 text-amber-900 hover:bg-amber-200 transition-colors"
+          >
+            Use {herringbonePreset.label}
+          </button>
+        </div>
+      )}
+
+      {longTile && (
+        <div className="rounded-lg border border-amber-500/50 bg-amber-50 p-2 space-y-1.5" role="note" aria-label="33 percent offset rule">
+          <p className="text-[11px] text-amber-800 leading-snug">
+            <span className="font-semibold">Tiles over 18 in: offset at most 33 %.</span> ANSI A108.02
+            recommends it for tiles with a side over 18 in (457 mm) — warpage makes a ½ offset meet
+            the high centre of one tile with the low end of the next (lippage). A ½ offset needs the
+            maker's approval and a mock-up.
+          </p>
+          <div className="flex gap-1.5">
+            <button onClick={() => setPattern('offset-1/3')} className="px-2 py-1 text-[11px] font-medium rounded-lg bg-amber-100 text-amber-900 hover:bg-amber-200 transition-colors">
+              Use ⅓ offset
+            </button>
+            <button onClick={() => setPattern('offset-1/4')} className="px-2 py-1 text-[11px] font-medium rounded-lg bg-amber-100 text-amber-900 hover:bg-amber-200 transition-colors">
+              Use ¼ offset
+            </button>
+          </div>
         </div>
       )}
     </div>

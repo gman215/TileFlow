@@ -108,3 +108,6 @@ Fixed along the way:
 Limits, stated: offcut reuse and a choosable buffer are 015; walls on the sheet are 014. The sheet
 prints the computed layout — hand-moved tiles are flagged, not drawn moved. In a pattern group
 the start lines come from the group's shared frame.
+
+Follow-up (2026-11-12, on `feat/013-patterns-and-shapes`): **Download** beside Copy CSV saves the
+cut list as `cut-list-<project>.csv` (UTF-8 with BOM, so Excel reads × and fractions).

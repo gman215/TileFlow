@@ -22,7 +22,18 @@
 // types (see `types.ts`). A typo here would fail silently at runtime: the model
 // would be offered a value the store does not understand. Keep these in step
 // with `packages/geometry/src/types/index.ts` by hand.
-const PATTERNS = ['grid', 'offset-1/2', 'offset-1/3', 'herringbone', 'diagonal-45'] as const;
+const PATTERNS = [
+  'grid',
+  'offset-1/2',
+  'offset-1/3',
+  'herringbone',
+  'diagonal-45',
+  // 013
+  'offset-1/4',
+  'basketweave',
+  'checkerboard',
+  'hexagon',
+] as const;
 const ALIGNMENTS = ['optimize', 'center-tile', 'center-grout'] as const;
 
 // Every length the model passes must already be in the store's unit (AC-2.4).
@@ -78,7 +89,12 @@ export const TOOL_DECLARATIONS: readonly ToolDeclaration[] = [
       'Set the tile laying pattern. Herringbone only fits exactly when the tile length plus ' +
       'grout is twice the tile width plus grout (a 2:1 tile, e.g. 6×12 in or 7.5×15 cm); with ' +
       'any other tile it leaves gaps, so suggest a 2:1 size alongside it. offset-1/2 is a ' +
-      'running/brick bond, offset-1/3 a third offset, diagonal-45 a grid turned 45°.',
+      'running/brick bond, offset-1/3 a third offset, offset-1/4 a quarter offset, diagonal-45 a ' +
+      'grid turned 45°. For a tile with a side over 18 in (457 mm) laid in running bond, prefer ' +
+      'offset-1/3 or offset-1/4: ANSI A108.02 recommends at most a 33% offset. basketweave lays ' +
+      'square blocks of two (or three) tiles, alternate blocks turned — it needs a 2:1 or 3:1 tile. ' +
+      'checkerboard is a grid in two colours of the same tile. hexagon lays hexagonal tiles; their ' +
+      'size is across the flats, so set width and height to that one size.',
     parameters: {
       type: 'object',
       properties: { pattern: { type: 'string', enum: [...PATTERNS] } },

@@ -44,7 +44,7 @@ const WEIGHT = z.number().finite().min(0).max(1);
 
 // Kept identical to `PatternType` / `AlignmentMode`; a value outside these is a
 // Zod failure rather than a store write the engine does not understand.
-const PATTERN = z.enum(['grid', 'offset-1/2', 'offset-1/3', 'herringbone', 'diagonal-45']);
+const PATTERN = z.enum(['grid', 'offset-1/2', 'offset-1/3', 'herringbone', 'diagonal-45', 'offset-1/4', 'basketweave', 'checkerboard', 'hexagon']);
 const ALIGNMENT = z.enum(['optimize', 'center-tile', 'center-grout']);
 
 // ─── Map ──────────────────────────────────────────────────────────────────────

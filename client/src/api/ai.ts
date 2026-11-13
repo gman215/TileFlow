@@ -31,7 +31,7 @@ import type {
   RoomFromImageDTO,
   RoomFromImageRequestDTO,
 } from '@api/_lib/types';
-import { rectShape, summarizeShape } from '@tileflow/geometry';
+import { rectShape, summarizeShape, tileFaceArea, type PatternType } from '@tileflow/geometry';
 // The sidebar's own label tables, so the brief says what the buttons say.
 import { PATTERNS } from '../components/Controls/TilePanel';
 import { ALIGNMENTS } from '../components/Controls/OptimizationPanel';
@@ -48,21 +48,10 @@ import {
 
 const BASE = '/api/ai';
 
-/**
- * The order buffer shown on the stats card. Exported so the figure the user
- * reads and the figure a model is told are the same number — if these drifted,
- * the installation brief would quote a different order quantity than the UI.
- */
-export const ORDER_BUFFER = 1.1;
-
-/**
- * Tiles to order for `tiles` placed: +10 %, rounded up. Done in integers —
- * `Math.ceil(100 * 1.1)` is 111, because 100 × 1.1 is 110.00000000000001 in
- * floating point, which over-ordered every multiple of ten by one tile.
- */
-export function orderQuantity(tiles: number): number {
-  return Math.ceil((tiles * Math.round(ORDER_BUFFER * 100)) / 100);
-}
+// The order figure lives in `utils/order.ts` (pure, shared with the plan
+// helpers); re-exported here where the AI code and older callers look for it.
+export { ORDER_BUFFER, orderQuantity, layoutOrder } from '../utils/order';
+import { layoutOrder } from '../utils/order';
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
@@ -245,7 +234,7 @@ export function formatForBrief(stats: LayoutStatsDTO): BriefFormattedDTO {
  * the model (AC-2.3). No cuts at all, or a zero-area "cut", is not a sliver.
  */
 export function sliverRisk(stats: LayoutStatsDTO): boolean {
-  const tileAreaMm2 = stats.tile.widthMm * stats.tile.heightMm;
+  const tileAreaMm2 = tileFaceArea({ width: stats.tile.widthMm, height: stats.tile.heightMm, pattern: stats.tile.pattern as PatternType });
   const smallest = stats.layout.smallestCutPieceMm2;
   return stats.layout.cutTileCount > 0 && smallest > 0 && smallest < tileAreaMm2 / 3;
 }
@@ -261,7 +250,7 @@ export function buildBriefRequest(): BriefRequestDTO | null {
     stats,
     formatted: formatForBrief(stats),
     sliverRisk: sliverRisk(stats),
-    sliverThreshold: formatSmallArea((stats.tile.widthMm * stats.tile.heightMm) / 3, stats.system),
+    sliverThreshold: formatSmallArea(tileFaceArea({ width: stats.tile.widthMm, height: stats.tile.heightMm, pattern: stats.tile.pattern as PatternType }) / 3, stats.system),
     system: stats.system,
   };
 }
@@ -368,7 +357,8 @@ export function statsDto(): LayoutStatsDTO | null {
 
   const summary = summarizeShape(room.shape ?? rectShape(room.width, room.height));
   const totalTiles = layout.fullTileCount + layout.cutTileCount;
-  const orderQty = orderQuantity(totalTiles);
+  // Per colour for a checkerboard, so the brief quotes the card's figure.
+  const orderQty = layoutOrder(layout);
   const sys = system as MeasurementSystem;
   const room_ = roomDisplay(sys);
   const tile_ = tileDisplay(sys);

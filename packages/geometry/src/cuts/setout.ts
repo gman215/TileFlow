@@ -99,9 +99,9 @@ export function setOutLines(
   const ay = { x: -ax.y, y: ax.x };
 
   const placed = result.tiles.filter((t) => !t.isOutside && t.original.vertices.length >= 4);
-  // Herringbone has no straight joint to strike: the weave is set out from
-  // the point on its own axes.
-  if (tile.pattern === 'herringbone' || placed.length === 0) {
+  // Herringbone and hexagon have no straight joint to strike: the pattern is
+  // set out from the point on its own axes.
+  if (tile.pattern === 'herringbone' || tile.pattern === 'hexagon' || placed.length === 0) {
     return {
       point,
       angle,
@@ -109,34 +109,59 @@ export function setOutLines(
     };
   }
 
-  // The tile nearest the set-out point, and of its sides, the two nearest it.
-  let nearest = placed[0];
-  let best = Infinity;
-  for (const t of placed) {
-    const v = t.original.vertices;
-    const c = { x: (v[0].x + v[2].x) / 2, y: (v[0].y + v[2].y) / 2 };
-    const d = Math.hypot(c.x - point.x, c.y - point.y);
-    if (d < best) {
-      best = d;
-      nearest = t;
-    }
-  }
-  const [p0, p1, p2] = nearest.original.vertices;
+  // Directions from the tile nearest the point; every rectangular pattern's
+  // tiles share them (a turned basketweave tile is still square to them).
+  const byDistance = placed
+    .map((t) => {
+      const v = t.original.vertices;
+      return { t, d: Math.hypot((v[0].x + v[2].x) / 2 - point.x, (v[0].y + v[2].y) / 2 - point.y) };
+    })
+    .sort((a, b) => a.d - b.d);
+  const [p0, p1, p2] = byDistance[0].t.original.vertices;
   const u = unit(sub(p1, p0));
   const v = unit(sub(p2, p1));
-  const lu = Math.hypot(p1.x - p0.x, p1.y - p0.y);
-  const lv = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-  const g = tile.grout / 2;
-  // Each side's joint centre, as a coordinate across the side.
-  const a = dot(sub(point, p0), u);
-  const b = dot(sub(point, p0), v);
-  const jointU = b < lv / 2 ? -g : lv + g; // offset along v of the joint running along u
-  const jointV = a < lu / 2 ? -g : lu + g; // offset along u of the joint running along v
-  let lineU = lineThrough('A', { x: p0.x + v.x * jointU, y: p0.y + v.y * jointU }, u, outline, true);
-  let lineV = lineThrough('B', { x: p0.x + u.x * jointV, y: p0.y + u.y * jointV }, v, outline, true);
+  const pickLine = (id: 'A' | 'B', dir: Vec2) => {
+    const n = { x: -dir.y, y: dir.x };
+    const g = tile.grout / 2;
+    // Every joint centre parallel to `dir` among the nearby tiles, as a
+    // distance from the point across the line.
+    const candidates: number[] = [];
+    for (const { t } of byDistance.slice(0, 12)) {
+      const vs = t.original.vertices;
+      const c = { x: vs.reduce((a, q) => a + q.x, 0) / vs.length, y: vs.reduce((a, q) => a + q.y, 0) / vs.length };
+      for (let i = 0; i < vs.length; i++) {
+        const a = vs[i];
+        const b = vs[(i + 1) % vs.length];
+        const e = sub(b, a);
+        if (Math.abs(e.x * dir.y - e.y * dir.x) > 1e-6 * Math.hypot(e.x, e.y)) continue;
+        const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const out = Math.sign(dot(sub(m, c), n)) || 1;
+        const s = dot(sub(m, point), n) + out * g;
+        if (!candidates.some((x) => Math.abs(x - s) < 0.01)) candidates.push(s);
+      }
+    }
+    candidates.sort((a, b) => Math.abs(a) - Math.abs(b));
+    // A joint is continuous when no tile straddles it anywhere in the room —
+    // block boundaries in basketweave, every joint in a grid (013 AC-2.2).
+    const continuous = (s: number) =>
+      placed.every((t) => {
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (const q of t.original.vertices) {
+          const d = dot(sub(q, point), n) - s;
+          lo = Math.min(lo, d);
+          hi = Math.max(hi, d);
+        }
+        return lo >= -0.5 || hi <= 0.5;
+      });
+    // Else the nearest joint: an offset bond's cross joint, the line a tiler
+    // still squares from.
+    const s = candidates.find(continuous) ?? candidates[0] ?? 0;
+    return lineThrough(id, { x: point.x + n.x * s, y: point.y + n.y * s }, dir, outline, candidates.length > 0);
+  };
   // A runs along the pattern's rows — the continuous joint in an offset bond.
-  if (Math.abs(dot(v, ax)) > Math.abs(dot(u, ax))) {
-    [lineU, lineV] = [{ ...lineV, id: 'A' }, { ...lineU, id: 'B' }];
-  }
-  return { point, angle, lines: [lineU, lineV] };
+  const uFirst = Math.abs(dot(u, ax)) >= Math.abs(dot(v, ax));
+  const lineA = pickLine('A', uFirst ? u : v);
+  const lineB = pickLine('B', uFirst ? v : u);
+  return { point, angle, lines: [lineA, lineB] };
 }

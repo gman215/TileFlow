@@ -3,8 +3,9 @@ import { frameWalls, takeoff, MM_PER_FOOT } from '@tileflow/geometry';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import { tileTotals } from '../../store/planHelpers';
 import { formatDisplayFromMM, roomDisplay, tileDisplay } from '../../utils/measurements';
-import { orderQuantity } from '../../api/ai';
+import { rowOrders, COLOUR_NAMES } from '../../utils/order';
 import { productBoxes } from '../../utils/boxes';
+import { downloadCsv, fileSlug } from '../../utils/csv';
 
 const SHEETS_IMPERIAL = [
   { label: '4×8 ft', width: 4 * MM_PER_FOOT, height: 8 * MM_PER_FOOT },
@@ -80,7 +81,7 @@ export default function TakeoffPanel() {
 
   // 012 AC-3.3 — boxes per product, on the combined order of its rows.
   const boxes = productBoxes(
-    tiles.map((t) => ({ tileConfig: t.tileConfig, order: orderQuantity(t.tiles) })),
+    tiles.map((t) => ({ tileConfig: t.tileConfig, orders: rowOrders(t) })),
     boxSizes
   );
   const sizeLabel = (t: { width: number; height: number }) =>
@@ -96,17 +97,28 @@ export default function TakeoffPanel() {
     )} ${t.tileConfig.pattern} tile`;
   const sheetLabel = (w: number, h: number) => sheetChoices.find((c) => c.width === w && c.height === h)?.label ?? '';
 
-  const copyCsv = async () => {
+  const projectName = useTileFlowStore.getState().projectName;
+  const csv = () => {
     const q = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
     const lines = [['Category', 'Item', 'Size / length', 'Quantity', 'Unit'].map(q).join(',')];
     for (const r of result.lumber) lines.push(['Framing', r.item, fmt(r.length), r.count, 'pcs'].map(q).join(','));
     lines.push(['Framing', 'Plate stock', stock.label, result.plates.pieces, 'pcs (approx.)'].map(q).join(','));
     for (const r of result.sheets) lines.push(['Sheet goods', r.material, sheetLabel(r.sheetWidth, r.sheetHeight), r.sheets, 'sheets'].map(q).join(','));
     for (const r of result.sheathing) lines.push(['Exterior', r.material, sheetLabel(r.sheetWidth, r.sheetHeight), r.sheets, 'sheets'].map(q).join(','));
-    for (const t of tiles) lines.push(['Tile', tileLabel(t), area(t.area), orderQuantity(t.tiles), 'tiles (incl. 10%)'].map(q).join(','));
-    for (const b of boxes) lines.push(['Tile', sizeLabel(b.tile), `${b.perBox} per box`, b.boxes.boxes, `boxes (${b.boxes.tiles} tiles)`].map(q).join(','));
+    for (const t of tiles) {
+      const orders = rowOrders(t);
+      if (orders.length > 1) orders.forEach((o, i) => lines.push(['Tile', `${tileLabel(t)} — ${COLOUR_NAMES[i].toLowerCase()}`, area(t.area), o, 'tiles (incl. 10%)'].map(q).join(',')));
+      else lines.push(['Tile', tileLabel(t), area(t.area), orders[0], 'tiles (incl. 10%)'].map(q).join(','));
+    }
+    for (const b of boxes) {
+      const name = sizeLabel(b.tile) + (b.colour !== undefined ? ` — ${COLOUR_NAMES[b.colour].toLowerCase()}` : '');
+      lines.push(['Tile', name, `${b.perBox} per box`, b.boxes.boxes, `boxes (${b.boxes.tiles} tiles)`].map(q).join(','));
+    }
+    return lines.join('\n');
+  };
+  const copyCsv = async () => {
     try {
-      await navigator.clipboard.writeText(lines.join('\n'));
+      await navigator.clipboard.writeText(csv());
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -205,13 +217,14 @@ export default function TakeoffPanel() {
               {tiles.map((t) => (
                 <div key={t.key} className="flex text-[11px]">
                   <span className="flex-1 truncate text-ink">{tileLabel(t)}</span>
-                  <span className="w-10 text-right font-mono font-medium text-ink">{orderQuantity(t.tiles)}</span>
+                  <span className="w-10 text-right font-mono font-medium text-ink">{rowOrders(t).reduce((a, b) => a + b, 0)}</span>
                 </div>
               ))}
               {boxes.map((b) => (
                 <div key={b.key} className="flex text-[11px]">
                   <span className="flex-1 truncate text-ink-secondary">
-                    {sizeLabel(b.tile)} · {b.perBox}/box
+                    {sizeLabel(b.tile)}
+                    {b.colour !== undefined && ` ${COLOUR_NAMES[b.colour].toLowerCase()}`} · {b.perBox}/box
                   </span>
                   <span className="text-right font-mono font-medium text-ink">{b.boxes.boxes} boxes</span>
                 </div>
@@ -219,9 +232,18 @@ export default function TakeoffPanel() {
             </div>
           )}
 
-          <button onClick={copyCsv} className="btn-secondary w-full py-1 text-[12px]">
-            {copied ? 'Copied ✓' : 'Copy as CSV'}
-          </button>
+          <div className="flex gap-1.5">
+            <button onClick={copyCsv} className="btn-secondary flex-1 py-1 text-[12px]">
+              {copied ? 'Copied ✓' : 'Copy as CSV'}
+            </button>
+            <button
+              onClick={() => downloadCsv(csv(), `takeoff-${fileSlug(projectName, 'project')}${scope === 'room' ? '-room' : ''}`)}
+              title="Save the takeoff as a .csv file"
+              className="btn-secondary flex-1 py-1 text-[12px]"
+            >
+              Download CSV
+            </button>
+          </div>
           <p className="text-[10px] text-ink-muted">Planning estimate — not an engineered design.</p>
         </>
       )}

@@ -9,7 +9,7 @@
  * to find the best alignment.
  */
 
-import { Polygon, Room, TileConfig, AlignmentMode, Vec2 } from '../types';
+import { Polygon, Room, TileConfig, AlignmentMode, Vec2, TilePolygon, TileVariant } from '../types';
 import { fullTilesFromEdgeAxis } from '../shape';
 import {
   rectToPolygon,
@@ -53,7 +53,7 @@ export interface PatternGeneratorParams {
  * pattern is generated in the frame's own rotated coordinates and mapped back,
  * so it runs parallel to the reference wall and is anchored on that wall.
  */
-export function generateTiles(params: PatternGeneratorParams): Polygon[] {
+export function generateTiles(params: PatternGeneratorParams): TilePolygon[] {
   const { frame, areaWidth, areaHeight } = params;
   if (!frame) return generateForArea(params);
 
@@ -92,16 +92,19 @@ export function generateTiles(params: PatternGeneratorParams): Polygon[] {
     areaHeight: 2 * halfH,
   });
 
-  return local.map((tile) =>
-    rotatePolygon(translatePolygon(tile, origin.x - halfW, origin.y - halfH), origin, angle)
-  );
+  return local.map((tile) => {
+    const moved: TilePolygon = rotatePolygon(translatePolygon(tile, origin.x - halfW, origin.y - halfH), origin, angle);
+    // A two-colour pattern's colour rides through the move (013).
+    if (tile.variant !== undefined) moved.variant = tile.variant;
+    return moved;
+  });
 }
 
 /** Dispatch to the pattern generator, in whatever coordinates it is handed. */
-function generateForArea(params: PatternGeneratorParams): Polygon[] {
+function generateForArea(params: PatternGeneratorParams): TilePolygon[] {
   const { tileConfig } = params;
 
-  let tiles: Polygon[];
+  let tiles: TilePolygon[];
   switch (tileConfig.pattern) {
     case 'grid':
       tiles = generateGrid(params);
@@ -117,6 +120,18 @@ function generateForArea(params: PatternGeneratorParams): Polygon[] {
       break;
     case 'diagonal-45':
       tiles = generateDiagonal45(params);
+      break;
+    case 'offset-1/4':
+      tiles = generateOffset(params, 1 / 4);
+      break;
+    case 'checkerboard':
+      tiles = generateGrid(params, true);
+      break;
+    case 'basketweave':
+      tiles = generateBasketweave(params);
+      break;
+    case 'hexagon':
+      tiles = generateHexagon(params);
       break;
     default:
       tiles = generateGrid(params);
@@ -147,11 +162,11 @@ function indexRange(
  * a tile corner relative to that centre — the same convention every other
  * generator here uses, and what lets one alignment rule serve all patterns.
  */
-function generateGrid(params: PatternGeneratorParams): Polygon[] {
+function generateGrid(params: PatternGeneratorParams, twoColour = false): TilePolygon[] {
   const { tileConfig, areaWidth, areaHeight, offsetX, offsetY } = params;
   const tw = tileConfig.width + tileConfig.grout;
   const th = tileConfig.height + tileConfig.grout;
-  const tiles: Polygon[] = [];
+  const tiles: TilePolygon[] = [];
   if (tw <= 0 || th <= 0) return tiles;
 
   const originX = areaWidth / 2 + offsetX;
@@ -161,14 +176,16 @@ function generateGrid(params: PatternGeneratorParams): Polygon[] {
 
   for (let j = rows.min; j <= rows.max; j++) {
     for (let i = cols.min; i <= cols.max; i++) {
-      tiles.push(
-        rectToPolygon(
-          originX + i * tw,
-          originY + j * th,
-          tileConfig.width,
-          tileConfig.height
-        )
+      const tile: TilePolygon = rectToPolygon(
+        originX + i * tw,
+        originY + j * th,
+        tileConfig.width,
+        tileConfig.height
       );
+      // Checkerboard: the tile at the lattice origin is light, its four
+      // neighbours dark.
+      if (twoColour) tile.variant = ((((i + j) % 2) + 2) % 2) as TileVariant;
+      tiles.push(tile);
     }
   }
 
@@ -340,6 +357,97 @@ function generateDiagonal45(params: PatternGeneratorParams): Polygon[] {
 }
 
 /**
+ * Basketweave (013): square blocks of k tiles side by side, alternate blocks
+ * turned a quarter, so the weave reads as a woven basket.
+ *
+ * k = (long + g) ÷ (short + g), rounded, at least 2: a 2:1 tile makes blocks
+ * of two. The block side is the longer of the tile's length and k short
+ * sides, so a tile that does not fit leaves gaps rather than overlapping (the
+ * Tile step warns, as it does for herringbone).
+ *
+ * Block (0, 0) holds the lattice-origin tile, as laid, with its box at
+ * [O, O + (w, h)] — the rule the alignment modes rely on.
+ */
+function generateBasketweave(params: PatternGeneratorParams): TilePolygon[] {
+  const { tileConfig, areaWidth, areaHeight, offsetX, offsetY } = params;
+  const { w, h, S, k, B } = basketweaveBlock(tileConfig);
+  const tiles: TilePolygon[] = [];
+  if (B <= 0) return tiles;
+  const landscape = w >= h;
+
+  const originX = areaWidth / 2 + offsetX;
+  const originY = areaHeight / 2 + offsetY;
+  const cols = indexRange(originX, areaWidth, B);
+  const rows = indexRange(originY, areaHeight, B);
+
+  for (let j = rows.min; j <= rows.max; j++) {
+    for (let i = cols.min; i <= cols.max; i++) {
+      const x = originX + i * B;
+      const y = originY + j * B;
+      const asLaid = ((i + j) % 2 + 2) % 2 === 0;
+      // As laid, landscape tiles stack downwards; turned, they stand side by
+      // side. Portrait tiles do the opposite.
+      const stackDown = asLaid === landscape;
+      const tw = asLaid ? w : h;
+      const th = asLaid ? h : w;
+      for (let r = 0; r < k; r++) {
+        tiles.push(rectToPolygon(stackDown ? x : x + r * S, stackDown ? y + r * S : y, tw, th));
+      }
+    }
+  }
+  return tiles;
+}
+
+/** Basketweave block geometry, shared with the period and the Tile step's warning. */
+export function basketweaveBlock(config: TileConfig) {
+  const w = config.width;
+  const h = config.height;
+  const g = config.grout;
+  const L = Math.max(w, h) + g;
+  const S = Math.min(w, h) + g;
+  const k = S > 0 ? Math.max(2, Math.round(L / S)) : 2;
+  return { w, h, g, L, S, k, B: Math.max(L, k * S) };
+}
+
+/**
+ * Hexagon (013): regular hexagons, flat sides vertical, `width` across the
+ * flats. Centres sit on a triangular lattice of pitch d = F + g, so the grout
+ * is even between every pair of edges.
+ *
+ * The lattice-origin tile's centre is O + (w/2, h/2), keeping Centre a tile's
+ * rule; Centre a joint is special-cased in `computeAlignmentOffset`.
+ */
+function generateHexagon(params: PatternGeneratorParams): TilePolygon[] {
+  const { tileConfig, areaWidth, areaHeight, offsetX, offsetY } = params;
+  const F = tileConfig.width;
+  const d = F + tileConfig.grout;
+  const tiles: TilePolygon[] = [];
+  if (F <= 0 || d <= 0) return tiles;
+  const R = F / Math.sqrt(3); // circumradius
+  const rowStep = (d * Math.sqrt(3)) / 2;
+
+  const cx0 = areaWidth / 2 + offsetX + tileConfig.width / 2;
+  const cy0 = areaHeight / 2 + offsetY + tileConfig.height / 2;
+  const rows = indexRange(cy0, areaHeight, rowStep);
+  const cols = indexRange(cx0, areaWidth, d);
+
+  for (let j = rows.min; j <= rows.max; j++) {
+    const shift = ((j % 2) + 2) % 2 === 1 ? d / 2 : 0;
+    for (let i = cols.min - 1; i <= cols.max; i++) {
+      const cx = cx0 + i * d + shift;
+      const cy = cy0 + j * rowStep;
+      const vertices: Vec2[] = [];
+      for (let n = 0; n < 6; n++) {
+        const a = -Math.PI / 2 + (n * Math.PI) / 3;
+        vertices.push({ x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) });
+      }
+      tiles.push({ vertices });
+    }
+  }
+  return tiles;
+}
+
+/**
  * Compute the grid offset that aligns the layout to the room:
  *  - `center-tile`: a full tile is centered on the anchor
  *  - `center-grout`: a grout joint runs through the anchor
@@ -384,6 +492,12 @@ export function computeAlignmentOffset(
     if (rule.along === 'x') return { offsetX: centred.offsetX, offsetY: config.grout / 2 };
     if (rule.along === 'y') return { offsetX: config.grout / 2, offsetY: centred.offsetY };
   }
+  // A hexagon's joint is the point where three tiles meet: d/√3 above the
+  // lattice-origin tile's centre (013).
+  if (config.pattern === 'hexagon' && mode === 'center-grout') {
+    const d = config.width + config.grout;
+    return { offsetX: -config.width / 2, offsetY: d / Math.sqrt(3) - config.height / 2 };
+  }
   return centred;
 }
 
@@ -398,8 +512,20 @@ export function getPatternUnit(config: TileConfig): { unitX: number; unitY: numb
     case 'grid':
     case 'offset-1/2':
     case 'offset-1/3':
+    case 'offset-1/4':
     case 'diagonal-45':
+    // Colour does not change waste, so the search period is the grid's.
+    case 'checkerboard':
       return { unitX: tw, unitY: th };
+    case 'basketweave': {
+      // Shifting by one block turns every block, so the weave repeats on 2B.
+      const { B } = basketweaveBlock(config);
+      return { unitX: 2 * B, unitY: 2 * B };
+    }
+    case 'hexagon': {
+      const d = config.width + config.grout;
+      return { unitX: d, unitY: d * Math.sqrt(3) };
+    }
     case 'herringbone': {
       // Two offsets differing by a weave lattice vector give the same layout,
       // so every distinct layout appears within one fundamental cell. The cell

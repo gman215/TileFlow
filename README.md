@@ -37,7 +37,18 @@ The line under the toolbar always says what to do next, and **?** shows every sh
 
 ### Patterns & Layout
 
-- **5 Tile Patterns** — Grid, ½ Offset (brick bond), ⅓ Offset, Herringbone, and 45° Diagonal
+- **9 Tile Patterns** — Grid, Checkerboard, ½ Offset (brick bond), ⅓ Offset, ¼ Offset, Herringbone,
+  Basketweave, 45° Diagonal and Hexagon
+- **Checkerboard in two colours** — the same tile in light and dark; the stats card, cut list,
+  set-out sheet and boxes count and order each colour on its own (each with its 10 %)
+- **Hexagon tiles** — regular hexagons sized across the flats, even grout on every edge; waste and
+  the smallest cut are measured against the hexagon's own area, and *Centre a joint* puts the point
+  where three tiles meet on the anchor
+- **Basketweave** — square blocks of two (or three) tiles, alternate blocks turned; warns when the
+  tile is not 2:1 or 3:1 including grout
+- **33 % offset rule** — a ½ offset on tiles with a side over 18 in (457 mm) warns that ANSI A108.02
+  recommends at most 33 % (warpage causes lippage), offers ⅓ or ¼ offset in one click, and prints
+  the warning on the set-out sheet
 - **Visual Pattern Previews** — Each pattern shows a live miniature rendered by the geometry engine before you select it
 - **Correct Herringbone** — Classic 45° interlocking weave built from an L-block lattice (`t1 = (S, S)`, `t2 = (L, −L)`); gap-free exact tiling at any tile ratio, including grout
 - **Layout Alignment** — Choose how the grid sits in the room:
@@ -131,7 +142,7 @@ The line under the toolbar always says what to do next, and **?** shows every sh
 - **Wall elevation** — a framing drawing of any wall from either side, with layout marks
 - **Takeoff** — studs, kings, jacks, cripples and headers by cut length; plates packed into stock
   lengths; drywall, cement board and sheathing by sheet; tile by product — for the whole plan or one
-  room, with **Copy as CSV**. A planning estimate, not an engineered design
+  room, with **Copy as CSV** or **Download CSV**. A planning estimate, not an engineered design
 
 ### Measurements
 
@@ -177,7 +188,7 @@ The line under the toolbar always says what to do next, and **?** shows every sh
   tile's own sides (so herringbone and diagonal cuts read as marked on the tile), grouped into
   lettered sizes to the nearest 1 mm or 1/16 in: straight, two cuts, notched (an L piece gives its
   notch), angled, or a shave under ½ mm. The pieces always reconcile with the card's cut count.
-  Copy as CSV, or show each piece's letter on the plan
+  Copy or download as CSV, or show each piece's letter on the plan
 - **Printable set-out sheet** — **Print** opens a sheet to print or save as PDF (A4 or US Letter,
   landscape): the room to scale with every tile, cut letters, wall lengths and a scale bar; two
   **start lines** on the grout joints nearest the set-out point (the anchor, or the room centre),

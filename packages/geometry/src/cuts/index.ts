@@ -5,7 +5,7 @@
  * each is *as marked on the tile*, and which of them are the same cut. The
  * layout itself is never changed (AC-4.1).
  */
-import type { LayoutResult, Polygon, TileConfig, Vec2 } from '../types';
+import type { LayoutResult, Polygon, TileConfig, TileVariant, Vec2 } from '../types';
 import { polygonArea, pointInPolygon } from '../utils/math';
 
 export { setOutLines, type SetOut, type SetOutLine } from './setout';
@@ -25,6 +25,8 @@ export interface CutPiece {
   tileId: number;
   /** Index into the tile's `pieces` */
   piece: number;
+  /** Colour in a two-colour pattern — a light and a dark cut are different tiles */
+  variant?: TileVariant;
   kind: CutKind;
   /** Extent along the tile's width side, mm (the product's width, however it is laid) */
   width: number;
@@ -47,6 +49,7 @@ export interface CutGroup {
   /** 'A', 'B', … 'Z', 'AA', … — most common first */
   label: string;
   kind: CutKind;
+  variant?: TileVariant;
   /** Rounded to the grouping step, mm */
   width: number;
   height: number;
@@ -90,6 +93,19 @@ function distanceToEdges(p: Vec2, poly: Polygon): number {
  */
 function tileAxes(original: Polygon, tile: TileConfig) {
   const [p0, p1, p2] = original.vertices;
+  if (original.vertices.length === 6) {
+    // A hexagon (013): across the flats (normal to a side) × point to point
+    // (along that side) — F × 2F/√3, how a hex tile is measured.
+    const e = sub(p1, p0);
+    const l = Math.hypot(e.x, e.y);
+    const along = { x: e.x / l, y: e.y / l };
+    const across = { x: -along.y, y: along.x };
+    const start = original.vertices.reduce((m, v) => (dot(v, across) < dot(m, across) ? v : m), p0);
+    const startAlong = original.vertices.reduce((m, v) => (dot(v, along) < dot(m, along) ? v : m), p0);
+    // Origin at the box corner, so local coordinates start at zero.
+    const origin = { x: across.x * dot(start, across) + along.x * dot(startAlong, along), y: across.y * dot(start, across) + along.y * dot(startAlong, along) };
+    return { origin, w: across, h: along, fullW: tile.width, fullH: (2 * tile.width) / Math.sqrt(3), hex: true };
+  }
   const e1 = sub(p1, p0);
   const e2 = sub(p2, p1);
   const l1 = Math.hypot(e1.x, e1.y);
@@ -98,8 +114,13 @@ function tileAxes(original: Polygon, tile: TileConfig) {
   const u2 = { x: e2.x / l2, y: e2.y / l2 };
   const firstIsWidth = Math.abs(l1 - tile.width) <= Math.abs(l1 - tile.height);
   return firstIsWidth
-    ? { origin: p0, w: u1, h: u2, fullW: l1, fullH: l2 }
-    : { origin: p0, w: u2, h: u1, fullW: l2, fullH: l1 };
+    ? { origin: p0, w: u1, h: u2, fullW: l1, fullH: l2, hex: false }
+    : { origin: p0, w: u2, h: u1, fullW: l2, fullH: l1, hex: false };
+}
+
+/** The uncut tile's face area in its own frame: a hexagon is ¾ of its box. */
+function tileArea(axes: { fullW: number; fullH: number; hex?: boolean }): number {
+  return axes.hex ? axes.fullW * axes.fullH * 0.75 : axes.fullW * axes.fullH;
 }
 
 function measurePiece(poly: Polygon, axes: ReturnType<typeof tileAxes>) {
@@ -116,10 +137,12 @@ function measurePiece(poly: Polygon, axes: ReturnType<typeof tileAxes>) {
   const area = polygonArea(poly);
 
   let kind: CutKind;
-  if (Math.abs(area - width * height) <= AREA_TOL * width * height) {
-    const fullW = Math.abs(width - axes.fullW) <= LEN_TOL;
-    const fullH = Math.abs(height - axes.fullH) <= LEN_TOL;
-    kind = fullW && fullH ? 'shave' : fullW || fullH ? 'straight' : 'corner';
+  const fullW = Math.abs(width - axes.fullW) <= LEN_TOL;
+  const fullH = Math.abs(height - axes.fullH) <= LEN_TOL;
+  if (fullW && fullH && area >= tileArea(axes) * (1 - AREA_TOL)) {
+    kind = 'shave';
+  } else if (Math.abs(area - width * height) <= AREA_TOL * width * height) {
+    kind = fullW || fullH ? 'straight' : 'corner';
   } else {
     // Square to the tile when every edge runs along one of its sides.
     // Measured as drift across the edge in mm, so a long edge is held to the
@@ -206,7 +229,7 @@ export function cutPieces(result: LayoutResult, tile: TileConfig): CutPiece[] {
     const polys = t.pieces?.length ? t.pieces : [t.clipped];
     polys.forEach((poly, piece) => {
       if (poly.vertices.length < 3 || polygonArea(poly) <= 0) return;
-      out.push({ tileId: t.id, piece, ...measurePiece(poly, axes) });
+      out.push({ tileId: t.id, piece, ...(t.variant !== undefined ? { variant: t.variant } : {}), ...measurePiece(poly, axes) });
     });
   }
   return out;
@@ -234,7 +257,7 @@ export function groupCuts(pieces: CutPiece[], stepMM: number): CutGroup[] {
   const byKey = new Map<string, CutPiece[]>();
   for (const p of pieces) {
     const n = p.notch ? `|${Math.round(p.notch.width / step)}|${Math.round(p.notch.height / step)}` : '';
-    const key = `${p.kind}|${Math.round(p.width / step)}|${Math.round(p.height / step)}${n}`;
+    const key = `${p.variant ?? ''}|${p.kind}|${Math.round(p.width / step)}|${Math.round(p.height / step)}${n}`;
     const list = byKey.get(key);
     if (list) list.push(p);
     else byKey.set(key, [p]);
@@ -244,6 +267,7 @@ export function groupCuts(pieces: CutPiece[], stepMM: number): CutGroup[] {
     return {
       label: '',
       kind: first.kind,
+      ...(first.variant !== undefined ? { variant: first.variant } : {}),
       width: Math.round(first.width / step) * step,
       height: Math.round(first.height / step) * step,
       ...(first.notch

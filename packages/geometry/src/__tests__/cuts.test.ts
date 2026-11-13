@@ -180,7 +180,10 @@ describe('setOutLines (AC-2.3)', () => {
     expect(Math.abs(a.dir.y)).toBeCloseTo(0, 9);
     // The centre tile spans y 850…1150; its nearer joint is 1.5 mm outside that.
     expect([850 - 1.5, 1150 + 1.5]).toContainEqual(expect.closeTo(a.from.y, 6));
-    expect([1200 - 1.5, 1800 + 1.5]).toContainEqual(expect.closeTo(b.from.x, 6));
+    // No cross joint runs unbroken in a ½ bond; B takes the nearest one — the
+    // joint of the rows either side, through the point itself (013).
+    expect(b.from.x).toBeCloseTo(1500, 6);
+    expect(result.tiles.some((t) => t.original.vertices.some((q) => Math.abs(q.x - (1500 - 1.5)) < 1e-6))).toBe(true);
   });
 
   it('runs parallel to the reference wall', () => {
