@@ -177,7 +177,7 @@ function validBoxes(raw: unknown): Record<string, number> {
   if (!raw || typeof raw !== 'object') return {};
   const out: Record<string, number> = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (/^\d+(\.\d)?x\d+(\.\d)?$/.test(k) && typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 10000) out[k] = v;
+    if (/^(\d+(\.\d)?x\d+(\.\d)?|hex\d+(\.\d)?)$/.test(k) && typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 10000) out[k] = v;
   }
   return out;
 }

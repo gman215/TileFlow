@@ -21,6 +21,7 @@ import {
   LayoutResult,
   PlacedTile,
   OptimizationWeights,
+  tileFaceArea,
 } from '../types';
 import { generateTiles, getPatternUnit, type PatternFrame } from '../patterns';
 import { patternFrameFor } from '../shape';
@@ -65,6 +66,7 @@ export function computeLayout(
   let cutTileCount = 0;
   let totalTileArea = 0;
   let smallestCutPiece = Infinity;
+  let variantCounts: LayoutResult['variantCounts'];
 
   for (let i = 0; i < tilePolygons.length; i++) {
     const original = tilePolygons[i];
@@ -93,6 +95,12 @@ export function computeLayout(
       isOutside: false,
       coverageRatio,
     };
+    if (original.variant !== undefined) {
+      tile.variant = original.variant;
+      const c = (variantCounts ??= [{ full: 0, cut: 0 }, { full: 0, cut: 0 }])[original.variant];
+      if (isFull) c.full++;
+      else c.cut++;
+    }
 
     tiles.push(tile);
 
@@ -111,7 +119,7 @@ export function computeLayout(
   // Reported as 0 when nothing was cut — there is no cut piece to measure.
   if (smallestCutPiece === Infinity) smallestCutPiece = 0;
 
-  const tileArea = tileConfig.width * tileConfig.height;
+  const tileArea = tileFaceArea(tileConfig);
   // A layout that needs no cuts at all is the ideal, so the min-cut term has to
   // sit at its maximum. Scoring the `smallestCutPiece = 0` sentinel directly
   // would rank a perfect fit alongside an infinitely thin sliver — the worst
@@ -136,6 +144,7 @@ export function computeLayout(
     optimizationScore: score,
     offsetX,
     offsetY,
+    ...(variantCounts ? { variantCounts } : {}),
   };
 }
 

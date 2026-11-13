@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useTileFlowStore } from '../../store/tileFlowStore';
-import { orderQuantity } from '../../api/ai';
+import { layoutOrder, colourTiles, orderQuantity, COLOUR_NAMES } from '../../utils/order';
 import { formatArea, formatWaste } from '../../utils/measurements';
 import { useAiAvailability } from '../../hooks/useAiAvailability';
 import BriefPanel from '../AI/BriefPanel';
 import CutListPanel from './CutListPanel';
 import SetOutSheet from '../Print/SetOutSheet';
-import { boxesFor, productKey } from '../../utils/boxes';
+import { boxesForOrders, productKey } from '../../utils/boxes';
 
 
 // Shared translucent-dark surface for canvas-floating chrome (the brief drawer
@@ -126,9 +126,11 @@ export default function StatsPanel() {
   const totalTiles = layout.fullTileCount + layout.cutTileCount;
   // Shared with statsDto() so the figure shown here and the figure a model is
   // told are the same number.
-  const buyCount = orderQuantity(totalTiles);
+  // A checkerboard's two colours are ordered separately, each with its 10 %.
+  const colourOrders = colourTiles(layout).map(orderQuantity);
+  const buyCount = layoutOrder(layout);
   // 012 AC-3.2 — the same order, in boxes, once the box size is known.
-  const box = boxesFor(buyCount, perBox);
+  const box = boxesForOrders(colourOrders, perBox);
   // Shared with statsDto() for the same reason.
   const roomAreaDisplay = formatArea(layout.roomArea, system);
 
@@ -193,6 +195,16 @@ export default function StatsPanel() {
           <div className="mt-1.5 text-[11px] text-white/55">
             Order to buy (incl. 10%)
           </div>
+          {colourOrders.length > 1 && (
+            <div className="mt-0.5 text-[11px] text-white/80" title="Each colour is ordered on its own, 10 % each">
+              {colourOrders.map((n, i) => (
+                <span key={i}>
+                  {i > 0 && ' · '}
+                  {COLOUR_NAMES[i]} <span className="font-mono font-medium">{n}</span>
+                </span>
+              ))}
+            </div>
+          )}
           {box && (
             <div
               className="mt-0.5 text-[11px] text-white/80"

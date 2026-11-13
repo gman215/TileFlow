@@ -6,6 +6,11 @@ export const PatternSchema = z.enum([
   'offset-1/3',
   'herringbone',
   'diagonal-45',
+  // 013
+  'offset-1/4',
+  'basketweave',
+  'checkerboard',
+  'hexagon',
 ]);
 
 /** A drawn outline. Vertex counts are capped so a bad payload can't blow up. */
@@ -237,7 +242,7 @@ export const CreateProjectSchema = z.object({
   plan: PlanSchema.nullish(),
   /** 012 — pieces per box, keyed by tile product ("300x600"); null clears */
   boxes: z
-    .record(z.string().regex(/^\d+(\.\d)?x\d+(\.\d)?$/), z.number().int().min(1).max(10000))
+    .record(z.string().regex(/^(\d+(\.\d)?x\d+(\.\d)?|hex\d+(\.\d)?)$/), z.number().int().min(1).max(10000))
     .refine((r) => Object.keys(r).length <= 50, 'At most 50 box sizes')
     .nullish(),
 });

@@ -945,6 +945,8 @@ export const useTileFlowStore = create<TileFlowState>()(
     tileConfig: DEFAULT_TILE,
 
     setTileSizeMM: (wMM: number, hMM: number) => {
+      // A hexagon has one size, across the flats (013 AC-1.4).
+      if (get().tileConfig.pattern === 'hexagon') hMM = wMM;
       if (patchActive({ tileConfig: { width: wMM, height: hMM } })) return;
       set({
         tileConfig: { ...get().tileConfig, width: wMM, height: hMM },
@@ -959,8 +961,12 @@ export const useTileFlowStore = create<TileFlowState>()(
     },
 
     setPattern: (p: PatternType) => {
-      if (patchActive({ tileConfig: { pattern: p } })) return;
-      set({ tileConfig: { ...get().tileConfig, pattern: p } });
+      // Choosing hexagon squares the size up: the size across the flats is
+      // the tile's one dimension (013 AC-1.4).
+      const { width } = get().tileConfig;
+      const patch = p === 'hexagon' ? { pattern: p, height: width } : { pattern: p };
+      if (patchActive({ tileConfig: patch })) return;
+      set({ tileConfig: { ...get().tileConfig, ...patch } });
     },
 
     setTileOrientation: (orientation: 'horizontal' | 'vertical') => {

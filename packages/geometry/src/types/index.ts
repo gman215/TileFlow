@@ -119,7 +119,29 @@ export type PatternType =
   | 'offset-1/2'
   | 'offset-1/3'
   | 'herringbone'
-  | 'diagonal-45';
+  | 'diagonal-45'
+  // 013
+  | 'offset-1/4'
+  | 'basketweave'
+  | 'checkerboard'
+  /** Regular hexagons; `width` is the size across the flats */
+  | 'hexagon';
+
+/** Colour index of a two-colour pattern (checkerboard): 0 = light, 1 = dark. */
+export type TileVariant = 0 | 1;
+
+/** A generated tile; `variant` only for two-colour patterns. */
+export interface TilePolygon extends Polygon {
+  variant?: TileVariant;
+}
+
+/**
+ * The face area of one tile: a hexagon's own area, otherwise width × height.
+ * Every waste and smallest-cut ratio divides by this (013 AC-1.4).
+ */
+export function tileFaceArea(config: Pick<TileConfig, 'width' | 'height' | 'pattern'>): number {
+  return config.pattern === 'hexagon' ? (Math.sqrt(3) / 2) * config.width * config.width : config.width * config.height;
+}
 
 export interface TileConfig {
   /** Tile width in mm */
@@ -415,6 +437,8 @@ export interface PlacedTile {
   isOutside: boolean;
   /** The ratio clippedArea / originalArea */
   coverageRatio: number;
+  /** Colour in a two-colour pattern (checkerboard); absent otherwise */
+  variant?: TileVariant;
 }
 
 // ─── Layout Result ────────────────────────────────────────────────────────────
@@ -430,6 +454,8 @@ export interface LayoutResult {
   optimizationScore: number;
   offsetX: number;
   offsetY: number;
+  /** Two-colour patterns: full and cut counts per colour, light then dark */
+  variantCounts?: [{ full: number; cut: number }, { full: number; cut: number }];
 }
 
 // ─── Optimization ─────────────────────────────────────────────────────────────

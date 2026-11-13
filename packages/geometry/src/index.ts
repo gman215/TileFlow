@@ -27,6 +27,7 @@ export {
   generateTiles,
   getPatternUnit,
   computeAlignmentOffset,
+  basketweaveBlock,
   type PatternGeneratorParams,
   type PatternFrame,
 } from './patterns';

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import { useCutList, cutLength, cutKindText, CUT_KIND_LABEL } from '../../hooks/useCutList';
+import { COLOUR_NAMES } from '../../utils/order';
+import { downloadCsv, fileSlug } from '../../utils/csv';
 import { CARD_STYLE } from './StatsPanel';
 
 /**
@@ -16,19 +18,37 @@ export default function CutListPanel({ onClose }: { onClose: () => void }) {
   const activeName = useTileFlowStore((s) => (s.plan && s.activeRoomId ? s.plan.rooms.find((r) => r.id === s.activeRoomId)?.name : null));
   const showCutLabels = useTileFlowStore((s) => s.showCutLabels);
   const setShowCutLabels = useTileFlowStore((s) => s.setShowCutLabels);
+  const projectName = useTileFlowStore((s) => s.projectName);
   const [copied, setCopied] = useState(false);
+  // A checkerboard's cuts come in two colours (013 AC-2.1).
+  const coloured = Boolean(list?.groups.some((g) => g.variant !== undefined));
 
-  async function copyCsv() {
-    if (!list) return;
+  function csv(): string | null {
+    if (!list) return null;
     const unit = system === 'metric' ? 'mm' : 'in';
     const q = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
-    const rows = [['Label', `Width (${unit})`, `Height (${unit})`, 'Cut', `Notch (${unit})`, 'Pieces', 'Tiles'].map(q).join(',')];
+    const head = ['Label', `Width (${unit})`, `Height (${unit})`, 'Cut', `Notch (${unit})`, 'Pieces', 'Tiles'];
+    const rows = [(coloured ? [...head.slice(0, 1), 'Colour', ...head.slice(1)] : head).map(q).join(',')];
     for (const g of list.groups) {
       const notch = g.notch ? `${cutLength(g.notch.width, system)} × ${cutLength(g.notch.height, system)}` : '';
-      rows.push([g.label, cutLength(g.width, system), cutLength(g.height, system), CUT_KIND_LABEL[g.kind], notch, g.count, g.tiles].map(q).join(','));
+      const cells: (string | number)[] = [g.label, cutLength(g.width, system), cutLength(g.height, system), CUT_KIND_LABEL[g.kind], notch, g.count, g.tiles];
+      if (coloured) cells.splice(1, 0, COLOUR_NAMES[g.variant ?? 0]);
+      rows.push(cells.map(q).join(','));
     }
+    return rows.join('\n');
+  }
+
+  /** Save the list as a .csv file — opens straight in a spreadsheet. */
+  function download() {
+    const text = csv();
+    if (text) downloadCsv(text, `cut-list-${fileSlug(activeName ?? projectName, 'floor')}`);
+  }
+
+  async function copyCsv() {
+    const text = csv();
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(rows.join('\n'));
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -54,6 +74,14 @@ export default function CutListPanel({ onClose }: { onClose: () => void }) {
           >
             {copied ? 'Copied' : 'Copy CSV'}
           </button>
+          <button
+            onClick={download}
+            disabled={!list || list.groups.length === 0}
+            title="Save the cut list as a .csv file"
+            className="rounded px-2 py-1 text-[11px] text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-40"
+          >
+            Download CSV
+          </button>
           <button onClick={onClose} aria-label="Close cut list" className="rounded px-2 py-1 text-[14px] text-white/50 hover:text-white">
             ×
           </button>
@@ -75,6 +103,7 @@ export default function CutListPanel({ onClose }: { onClose: () => void }) {
             <thead>
               <tr className="text-left text-[10px] uppercase tracking-wide text-white/45">
                 <th className="px-2 py-1 font-medium"></th>
+                {coloured && <th className="px-2 py-1 font-medium">Colour</th>}
                 <th className="px-2 py-1 font-medium">Size ({system === 'metric' ? 'mm' : 'in'})</th>
                 <th className="px-2 py-1 font-medium">Cut</th>
                 <th className="px-2 py-1 text-right font-medium">Pcs</th>
@@ -84,6 +113,7 @@ export default function CutListPanel({ onClose }: { onClose: () => void }) {
               {list.groups.map((g) => (
                 <tr key={g.label} className="border-t border-white/5">
                   <td className="px-2 py-1 font-mono font-semibold text-amber-300">{g.label}</td>
+                  {coloured && <td className="px-2 py-1 text-white/70">{COLOUR_NAMES[g.variant ?? 0]}</td>}
                   <td className="whitespace-nowrap px-2 py-1 font-mono text-white/90">
                     {cutLength(g.width, system)} × {cutLength(g.height, system)}
                   </td>

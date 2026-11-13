@@ -363,10 +363,15 @@ export function fullTilesFromEdgeAxis(
   if (pattern === 'herringbone' || pattern === 'diagonal-45') {
     return { along: null, reason: 'Herringbone and 45° diagonal have no joint that runs along an edge.' };
   }
+  if (pattern === 'hexagon') {
+    return { along: null, reason: 'Hexagons have no straight joint to start full tiles from.' };
+  }
   const raw = Math.atan2(edge[1].y - edge[0].y, edge[1].x - edge[0].x);
   const quarters = Math.round((raw - foldQuarter(raw)) / (Math.PI / 2));
   const along = Math.abs(quarters) % 2 === 1 ? 'y' : 'x';
-  if (along === 'y' && pattern !== 'grid') {
+  // Grid, checkerboard and basketweave have unbroken joints both ways (013);
+  // offset bonds only along their rows.
+  if (along === 'y' && pattern !== 'grid' && pattern !== 'checkerboard' && pattern !== 'basketweave') {
     return { along: null, reason: 'Offset rows run across this edge, so only every other row would start full. Use Grid, or an edge along the rows.' };
   }
   return { along };

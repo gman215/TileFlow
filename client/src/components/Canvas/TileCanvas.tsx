@@ -37,6 +37,9 @@ import type { PlanTool } from '../../store/tileFlowStore';
 
 const FULL_TILE_COLOR = '#8FB3D9';
 const CUT_TILE_COLOR = '#E0A074';
+/** The checkerboard's second colour: the same two meanings, a darker tone (013) */
+const FULL_TILE_DARK = '#4E7299';
+const CUT_TILE_DARK = '#B0703F';
 const GROUT_COLOR = '#3A3A36';
 const ROOM_BORDER_COLOR = 'rgba(255,255,255,0.32)';
 const ROOM_FILL_COLOR = '#26241F';
@@ -59,6 +62,10 @@ const PATTERN_LABELS: Record<PatternType, string> = {
   'offset-1/3': '⅓ Offset',
   herringbone: 'Herringbone',
   'diagonal-45': '45° Diagonal',
+  'offset-1/4': '¼ Offset',
+  basketweave: 'Basketweave',
+  checkerboard: 'Checkerboard',
+  hexagon: 'Hexagon',
 };
 
 
@@ -120,7 +127,8 @@ const TileShape = React.memo(
       return polys.map(polyToFlatPoints);
     }, [tile.pieces, tile.clipped]);
 
-    const color = tile.isFull ? FULL_TILE_COLOR : CUT_TILE_COLOR;
+    const dark = tile.variant === 1;
+    const color = tile.isFull ? (dark ? FULL_TILE_DARK : FULL_TILE_COLOR) : dark ? CUT_TILE_DARK : CUT_TILE_COLOR;
     const dx = offset?.dx ?? 0;
     const dy = offset?.dy ?? 0;
 
@@ -881,6 +889,15 @@ export default function TileCanvas() {
           <span className="w-3 h-3 rounded-sm" style={{ background: CUT_TILE_COLOR }} />
           Cut
         </span>
+        {pattern === 'checkerboard' && (
+          <span className="flex items-center gap-1.5 text-[11px] text-white/80" title="The checkerboard's second colour">
+            <span className="flex">
+              <span className="w-1.5 h-3 rounded-l-sm" style={{ background: FULL_TILE_DARK }} />
+              <span className="w-1.5 h-3 rounded-r-sm" style={{ background: CUT_TILE_DARK }} />
+            </span>
+            Dark
+          </span>
+        )}
         {isComputing && <span className="text-[11px] text-white/60 animate-pulse select-none">computing…</span>}
       </div>
 

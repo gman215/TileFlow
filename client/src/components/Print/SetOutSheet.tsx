@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   setOutLines,
@@ -16,11 +16,12 @@ import {
 } from '@tileflow/geometry';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import { settingsOf, tileTotals } from '../../store/planHelpers';
-import { orderQuantity, describeAnchor } from '../../api/ai';
-import { PATTERNS } from '../Controls/TilePanel';
+import { describeAnchor } from '../../api/ai';
+import { colourTiles, layoutOrder, orderQuantity, rowOrders, COLOUR_NAMES } from '../../utils/order';
+import { PATTERNS, overOffsetWarning } from '../Controls/TilePanel';
 import { ALIGNMENTS } from '../Controls/OptimizationPanel';
 import { buildCutList, cutLength, cutKindText, pieceKey, type CutList } from '../../hooks/useCutList';
-import { boxesFor, productBoxes, productKey } from '../../utils/boxes';
+import { boxesForOrders, productBoxes, productKey } from '../../utils/boxes';
 import {
   formatArea,
   formatImperialFeetInches,
@@ -44,6 +45,7 @@ const PAPER = {
 } as const;
 const PAD = 9; // mm
 const SIDE = 82; // mm — the right-hand column
+/** Most cut rows the first page tries; fewer when the side column would overflow. */
 const FIRST_PAGE_ROWS = 18;
 const MORE_ROWS = 34; // per column, two columns on a continuation page
 
@@ -316,7 +318,7 @@ function Drawing({ r, system, boxW, boxH }: { r: SheetRoom; system: MeasurementS
           <polygon
             key={`${t.id}:${j}`}
             points={pts(poly)}
-            fill={t.isFull ? '#f5f5f4' : '#fde7c8'}
+            fill={t.variant === 1 ? (t.isFull ? '#a8a29e' : '#d6a26f') : t.isFull ? '#f5f5f4' : '#fde7c8'}
             stroke="#a8a29e"
             strokeWidth={hair * 2}
           />
@@ -372,11 +374,13 @@ const mono: React.CSSProperties = { fontFamily: 'ui-monospace, SFMono-Regular, M
 const h3: React.CSSProperties = { fontSize: '8.5pt', fontWeight: 700, margin: '2.5mm 0 1mm' };
 
 function CutTable({ groups, system }: { groups: CutList['groups']; system: MeasurementSystem }) {
+  const coloured = groups.some((g) => g.variant !== undefined);
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr>
           <th style={th}></th>
+          {coloured && <th style={th}>Colour</th>}
           <th style={th}>Size ({system === 'metric' ? 'mm' : 'in'})</th>
           <th style={th}>Cut</th>
           <th style={{ ...th, textAlign: 'right' }}>Pcs</th>
@@ -386,6 +390,7 @@ function CutTable({ groups, system }: { groups: CutList['groups']; system: Measu
         {groups.map((g) => (
           <tr key={g.label}>
             <td style={{ ...td, ...mono, fontWeight: 700, color: '#9a3412' }}>{g.label}</td>
+            {coloured && <td style={td}>{COLOUR_NAMES[g.variant ?? 0]}</td>}
             <td style={{ ...td, ...mono, whiteSpace: 'nowrap' }}>
               {cutLength(g.width, system)} × {cutLength(g.height, system)}
             </td>
@@ -440,11 +445,25 @@ function RoomPage({
 }) {
   const tile = tileDisplay(system);
   const total = r.layout.fullTileCount + r.layout.cutTileCount;
-  const order = orderQuantity(total);
+  const colourOrders = colourTiles(r.layout).map(orderQuantity);
+  const order = layoutOrder(r.layout);
   const perBox = boxSizes[productKey(r.tileConfig)];
-  const box = boxesFor(order, perBox);
-  const first = r.cuts.groups.slice(0, FIRST_PAGE_ROWS);
-  const rest = r.cuts.groups.slice(FIRST_PAGE_ROWS);
+  const box = boxesForOrders(colourOrders, perBox);
+  const hexagon = r.tileConfig.pattern === 'hexagon';
+  const longTile = overOffsetWarning(r.tileConfig);
+  // Rows that fit beside the drawing depend on what else is in the column —
+  // colours, boxes, a warning, a long anchor, wrapped notch text — so the
+  // column is measured and rows move to the continuation page until it fits.
+  const sideRef = useRef<HTMLDivElement>(null);
+  const [firstRows, setFirstRows] = useState(FIRST_PAGE_ROWS);
+  // A new layout starts from the full budget again.
+  useLayoutEffect(() => setFirstRows(FIRST_PAGE_ROWS), [r.layout]);
+  useLayoutEffect(() => {
+    const el = sideRef.current;
+    if (el && firstRows > 0 && el.scrollHeight > el.clientHeight + 1) setFirstRows((n) => n - 1);
+  });
+  const first = r.cuts.groups.slice(0, firstRows);
+  const rest = r.cuts.groups.slice(firstRows);
   const more: CutList['groups'][] = [];
   for (let i = 0; i < rest.length; i += MORE_ROWS * 2) more.push(rest.slice(i, i + MORE_ROWS * 2));
 
@@ -474,16 +493,29 @@ function RoomPage({
           <div style={{ width: `${drawW}mm`, display: 'flex', alignItems: 'center' }}>
             <Drawing r={r} system={system} boxW={drawW} boxH={bodyH} />
           </div>
-          <div style={{ width: `${SIDE}mm`, fontSize: '8pt' }}>
+          <div ref={sideRef} style={{ width: `${SIDE}mm`, fontSize: '8pt', height: `${bodyH}mm`, overflow: 'hidden' }}>
             <div style={{ ...h3, marginTop: 0 }}>Layout</div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
                 <Row k="Floor area" v={formatArea(r.layout.roomArea, system)} />
-                <Row k="Tile" v={`${formatWithUnit(r.tileConfig.width, tile)} × ${formatWithUnit(r.tileConfig.height, tile)}`} />
+                <Row
+                  k="Tile"
+                  v={
+                    hexagon
+                      ? `${formatWithUnit(r.tileConfig.width, tile)} hexagon, across the flats`
+                      : `${formatWithUnit(r.tileConfig.width, tile)} × ${formatWithUnit(r.tileConfig.height, tile)}`
+                  }
+                />
                 <Row k="Grout" v={formatWithUnit(r.tileConfig.grout, groutDisplay(system))} />
                 <Row k="Pattern" v={pattern} />
                 <Row k="Alignment" v={alignment} />
                 <Row k="Set out from" v={from} />
+                {longTile && (
+                  <Row
+                    k="Warning"
+                    v={<b style={{ color: '#b91c1c' }}>½ offset on a tile over 18 in — ANSI A108.02 recommends at most 33 %; confirm with the maker and a mock-up.</b>}
+                  />
+                )}
               </tbody>
             </table>
 
@@ -507,7 +539,7 @@ function RoomPage({
             </table>
             <p style={{ fontSize: '6.8pt', color: '#78716c', margin: '1mm 0 0' }}>
               {herring
-                ? 'Herringbone has no straight joint: snap A and B through the set-out point (blue) and set the weave out from it.'
+                ? `${hexagon ? 'Hexagons have' : 'Herringbone has'} no straight joint: snap A and B through the set-out point (blue) and set the ${hexagon ? 'first tile' : 'weave'} out from it.`
                 : 'Both lines are grout-joint centres. Snap A, square B to it, and lay out from where they cross.'}{' '}
               Measured to the {isPlan ? 'finish face of the wall' : 'wall'}, square to the line.
             </p>
@@ -517,6 +549,9 @@ function RoomPage({
               <tbody>
                 <Row k="Tiles placed" v={`${total} (${r.layout.fullTileCount} full, ${r.layout.cutTileCount} cut)`} />
                 <Row k="Order" v={<b>{order} tiles incl. 10 %</b>} />
+                {colourOrders.length > 1 && (
+                  <Row k="By colour" v={colourOrders.map((n, i) => `${COLOUR_NAMES[i]} ${n}`).join(' · ')} />
+                )}
                 {box && <Row k="Boxes" v={<b>{`${box.boxes} × ${perBox} = ${box.tiles} tiles`}</b>} />}
               </tbody>
             </table>
@@ -569,7 +604,7 @@ function ProjectOrderPage({ paper, projectName, system }: { paper: { w: number; 
   if (!plan) return null;
   const tile = tileDisplay(system);
   const rows = tileTotals(plan, derived, roomLayouts);
-  const boxes = productBoxes(rows.map((t) => ({ tileConfig: t.tileConfig, order: orderQuantity(t.tiles) })), boxSizes);
+  const boxes = productBoxes(rows.map((t) => ({ tileConfig: t.tileConfig, orders: rowOrders(t) })), boxSizes);
   const size = (t: { width: number; height: number }) => `${formatWithUnit(t.width, tile)} × ${formatWithUnit(t.height, tile)}`;
   return (
     <section className="sheet-page" style={{ width: `${paper.w}mm`, height: `${paper.h}mm`, padding: `${PAD}mm`, boxSizing: 'border-box' }}>
@@ -595,7 +630,9 @@ function ProjectOrderPage({ paper, projectName, system }: { paper: { w: number; 
               <td style={{ ...td, textAlign: 'right' }}>{formatArea(t.area, system)}</td>
               <td style={{ ...td, ...mono, textAlign: 'right' }}>{t.tiles}</td>
               <td style={{ ...td, ...mono, textAlign: 'right' }}>{t.cuts}</td>
-              <td style={{ ...td, ...mono, textAlign: 'right', fontWeight: 700 }}>{orderQuantity(t.tiles)}</td>
+              <td style={{ ...td, ...mono, textAlign: 'right', fontWeight: 700 }}>
+                {rowOrders(t).length > 1 ? rowOrders(t).map((n, i) => `${COLOUR_NAMES[i]} ${n}`).join(' + ') : rowOrders(t)[0]}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -606,7 +643,11 @@ function ProjectOrderPage({ paper, projectName, system }: { paper: { w: number; 
           <table style={{ width: '60%', borderCollapse: 'collapse' }}>
             <tbody>
               {boxes.map((b) => (
-                <Row key={b.key} k={size(b.tile)} v={<b>{`${b.boxes.boxes} boxes × ${b.perBox} = ${b.boxes.tiles} tiles (order ${b.order})`}</b>} />
+                <Row
+                  key={`${b.key}|${b.colour ?? ''}`}
+                  k={size(b.tile) + (b.colour !== undefined ? ` ${COLOUR_NAMES[b.colour].toLowerCase()}` : '')}
+                  v={<b>{`${b.boxes.boxes} boxes × ${b.perBox} = ${b.boxes.tiles} tiles (order ${b.order})`}</b>}
+                />
               ))}
             </tbody>
           </table>

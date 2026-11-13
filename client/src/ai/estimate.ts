@@ -152,7 +152,8 @@ const MAX_PER_M2: Partial<Record<EstimateCategory, number>> = { adhesive: 15, gr
  * labour line for a 128 ft² kitchen in testing, so these get 5 h/m².
  */
 const SLOW_PATTERN_LABOUR_PER_M2 = 5;
-const SLOW_PATTERNS = new Set(['herringbone', 'diagonal-45']);
+// Patterns with more cutting and fitting per tile (013 adds basketweave and hexagon).
+const SLOW_PATTERNS = new Set(['herringbone', 'diagonal-45', 'basketweave', 'hexagon']);
 const MIN_LABOUR_PER_M2 = 0.05;
 
 /**
