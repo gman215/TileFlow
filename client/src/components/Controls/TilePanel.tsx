@@ -8,6 +8,7 @@ import {
 } from '@tileflow/geometry';
 import { groutDisplay, tileDisplay } from '../../utils/measurements';
 import DimensionField from './DimensionField';
+import { productKey, parseBoxSize, boxArea } from '../../utils/boxes';
 
 export const PATTERNS: { value: PatternType; label: string }[] = [
   { value: 'grid', label: 'Grid' },
@@ -184,6 +185,8 @@ export default function TilePanel() {
         />
       </div>
 
+      <BoxField />
+
       {/* Tile orientation — swaps W/H (e.g. 12×24 ↔ 24×12) */}
       <div className="flex items-center gap-1.5">
         <span className="text-[10px] font-semibold text-ink-muted w-10 shrink-0">
@@ -282,4 +285,72 @@ export default function TilePanel() {
 /** Tolerant comparison for mm values that originate from unit conversion. */
 function approx(a: number, b: number): boolean {
   return Math.abs(a - b) < 0.5;
+}
+
+/**
+ * 012 AC-3.1 — pieces per box for this tile size. Takes a count, or the area
+ * printed on the box (`15.5 ft²`), which is turned into pieces from the tile
+ * size and said so. Empty clears it.
+ */
+function BoxField() {
+  const tileConfig = useTileFlowStore((s) => s.tileConfig);
+  const system = useTileFlowStore((s) => s.system);
+  const key = productKey(tileConfig);
+  const perBox = useTileFlowStore((s) => s.boxSizes[key]);
+  const setBoxSize = useTileFlowStore((s) => s.setBoxSize);
+  const shown = perBox ? String(perBox) : '';
+  const [text, setText] = React.useState(shown);
+  const [note, setNote] = React.useState<string | null>(null);
+  React.useEffect(() => setText(shown), [shown]);
+
+  const commit = () => {
+    if (text.trim() === '') {
+      setBoxSize(key, null);
+      setNote(null);
+      return;
+    }
+    const parsed = parseBoxSize(text, tileConfig);
+    if (!parsed) {
+      setNote(system === 'metric' ? 'Pieces (8) or area per box (1.44 m²)' : 'Pieces (8) or area per box (15.5 ft²)');
+      setText(shown);
+      return;
+    }
+    setBoxSize(key, parsed.pieces);
+    setText(String(parsed.pieces));
+    setNote(parsed.fromArea ? `${text.trim()} = ${parsed.pieces} pieces (rounded)` : null);
+  };
+
+  return (
+    <div className="space-y-0.5">
+      <div
+        title="How many tiles come in a box — or type the area on the box (15.5 ft², 1.44 m²)"
+        className="flex items-center bg-[#F7F6F3] border border-hairline rounded-lg focus-within:border-accent focus-within:ring-1 focus-within:ring-accent transition-colors"
+      >
+        <span className="pl-2.5 pr-1.5 text-[10px] font-semibold text-ink-muted select-none shrink-0">Per box</span>
+        <input
+          type="text"
+          aria-label="Tiles per box"
+          value={text}
+          placeholder="optional"
+          onChange={(e) => setText(e.target.value)}
+          onBlur={commit}
+          onFocus={(e) => e.target.select()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+            else if (e.key === 'Escape') {
+              setText(shown);
+              setNote(null);
+              e.currentTarget.blur();
+            }
+          }}
+          spellCheck={false}
+          className="w-full min-w-0 bg-transparent py-1.5 font-mono text-sm text-ink outline-none placeholder:font-sans placeholder:text-[11px] placeholder:text-ink-muted/70"
+        />
+        <span className="pr-2.5 pl-1 text-[10px] text-ink-muted select-none shrink-0">
+          {perBox ? `pcs · ${boxArea(perBox, tileConfig, system === 'metric')}` : 'pcs'}
+        </span>
+      </div>
+      {note && <p className="px-1 text-[10px] text-ink-muted">{note}</p>}
+    </div>
+  );
 }

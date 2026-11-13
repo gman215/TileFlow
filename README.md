@@ -171,6 +171,23 @@ The line under the toolbar always says what to do next, and **?** shows every sh
 - **Live Statistics** — A floating stats card on the canvas leads with two hero figures — **Order to buy (incl. 10%)** and **Waste %** (green ≤ 10%, red > 10%) — backed by a quiet secondary row of full / cut / total tile counts, room area, and compute time
 - **Project Persistence** — Save and load projects via a REST API backed by PostgreSQL
 
+### Installer Output — what you take to the job
+
+- **Dimensioned cut list** — **Cuts** on the stats card lists every cut piece measured along the
+  tile's own sides (so herringbone and diagonal cuts read as marked on the tile), grouped into
+  lettered sizes to the nearest 1 mm or 1/16 in: straight, two cuts, notched (an L piece gives its
+  notch), angled, or a shave under ½ mm. The pieces always reconcile with the card's cut count.
+  Copy as CSV, or show each piece's letter on the plan
+- **Printable set-out sheet** — **Print** opens a sheet to print or save as PDF (A4 or US Letter,
+  landscape): the room to scale with every tile, cut letters, wall lengths and a scale bar; two
+  **start lines** on the grout joints nearest the set-out point (the anchor, or the room centre),
+  each dimensioned to the walls on both sides; the settings, the order and the full cut list. The
+  installation brief prints too — only if it was written for the layout on screen. A floor plan
+  gets a page per room (measured to the finish face) and a project order page
+- **Order by the box** — type the pieces per box (or the area on the box, `15.5 ft²`) under the
+  tile size and the order reads in boxes, with the spare; in a floor plan, boxes are counted per
+  product on the combined order of every room using it
+
 ---
 
 ## Tech Stack
@@ -440,7 +457,7 @@ The client calls the API at the relative base `/api` (see `client/src/api/client
 
 | Model | Description |
 |---|---|
-| **Project** | Top-level entity with name and timestamps, and an optional `plan` JSON (walls, nodes, assemblies, rooms, pattern groups). Rooms are stored as placement points and re-derived from the walls on load, so no stored geometry can disagree with them |
+| **Project** | Top-level entity with name and timestamps, an optional `plan` JSON (walls, nodes, assemblies, rooms, pattern groups), and optional `boxes` JSON (pieces per box by tile size). Rooms are stored as placement points and re-derived from the walls on load, so no stored geometry can disagree with them |
 | **Room** | 1:1 with Project — width, height (mm; the bounding box when an outline is drawn), display unit preference (`m` or `feet`), and an optional `shape` JSON holding the drawn outline, its cut-outs and reference wall |
 | **TileConfig** | 1:1 with Project — tile dimensions (mm), grout, pattern, α/β weights |
 | **SavedLayout** | Many per Project — serialized layout result, config snapshot, score, optional label |

@@ -28,6 +28,7 @@ import HintBar, { useHint } from './HintBar';
 import ToolIcon from './ToolIcon';
 import WallLengthEditor from './WallLengthEditor';
 import AnchorLayer from './AnchorLayer';
+import CutLabels from './CutLabels';
 import { anchorAtClick } from './anchorPick';
 import { sameTarget, type RectEdge, type WallPreview, type WallTarget } from './wallEdit';
 import { regionAt } from '@tileflow/geometry';
@@ -1096,6 +1097,7 @@ export default function TileCanvas() {
                 );
               })}
               {planTileElements}
+              <CutLabels scale={scale} />
               <PlanLayer scale={scale} interactive={planEditing} />
             </>
           ) : (
@@ -1123,6 +1125,7 @@ export default function TileCanvas() {
 
           {/* Tiles */}
           {tileElements}
+          <CutLabels scale={scale} />
 
           {/* An outline proposed from an image — above everything, never hittable */}
           {shapeProposal && <ProposalGhost shape={shapeProposal.shape} scale={scale} />}

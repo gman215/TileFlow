@@ -3,7 +3,8 @@ import { frameWalls, takeoff, MM_PER_FOOT } from '@tileflow/geometry';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import { tileTotals } from '../../store/planHelpers';
 import { formatDisplayFromMM, roomDisplay, tileDisplay } from '../../utils/measurements';
-import { ORDER_BUFFER } from '../../api/ai';
+import { orderQuantity } from '../../api/ai';
+import { productBoxes } from '../../utils/boxes';
 
 const SHEETS_IMPERIAL = [
   { label: '4×8 ft', width: 4 * MM_PER_FOOT, height: 8 * MM_PER_FOOT },
@@ -31,6 +32,7 @@ export default function TakeoffPanel() {
   const system = useTileFlowStore((s) => s.system);
   const activeRoomId = useTileFlowStore((s) => s.activeRoomId);
   const roomLayouts = useTileFlowStore((s) => s.roomLayouts);
+  const boxSizes = useTileFlowStore((s) => s.boxSizes);
 
   const metric = system === 'metric';
   const sheetChoices = metric ? SHEETS_METRIC : SHEETS_IMPERIAL;
@@ -76,6 +78,14 @@ export default function TakeoffPanel() {
     [plan, derived, roomLayouts, scope, activeRoomId]
   );
 
+  // 012 AC-3.3 — boxes per product, on the combined order of its rows.
+  const boxes = productBoxes(
+    tiles.map((t) => ({ tileConfig: t.tileConfig, order: orderQuantity(t.tiles) })),
+    boxSizes
+  );
+  const sizeLabel = (t: { width: number; height: number }) =>
+    `${formatDisplayFromMM(t.width, tileDims.unit, tileDims.imperialFormat)} × ${formatDisplayFromMM(t.height, tileDims.unit, tileDims.imperialFormat)} tile`;
+
   if (!plan || !result) return null;
   const stock = stockChoices[Math.min(stockIndex, stockChoices.length - 1)];
   const tileLabel = (t: (typeof tiles)[number]) =>
@@ -93,7 +103,8 @@ export default function TakeoffPanel() {
     lines.push(['Framing', 'Plate stock', stock.label, result.plates.pieces, 'pcs (approx.)'].map(q).join(','));
     for (const r of result.sheets) lines.push(['Sheet goods', r.material, sheetLabel(r.sheetWidth, r.sheetHeight), r.sheets, 'sheets'].map(q).join(','));
     for (const r of result.sheathing) lines.push(['Exterior', r.material, sheetLabel(r.sheetWidth, r.sheetHeight), r.sheets, 'sheets'].map(q).join(','));
-    for (const t of tiles) lines.push(['Tile', tileLabel(t), area(t.area), Math.ceil(t.tiles * ORDER_BUFFER), 'tiles (incl. 10%)'].map(q).join(','));
+    for (const t of tiles) lines.push(['Tile', tileLabel(t), area(t.area), orderQuantity(t.tiles), 'tiles (incl. 10%)'].map(q).join(','));
+    for (const b of boxes) lines.push(['Tile', sizeLabel(b.tile), `${b.perBox} per box`, b.boxes.boxes, `boxes (${b.boxes.tiles} tiles)`].map(q).join(','));
     try {
       await navigator.clipboard.writeText(lines.join('\n'));
       setCopied(true);
@@ -194,7 +205,15 @@ export default function TakeoffPanel() {
               {tiles.map((t) => (
                 <div key={t.key} className="flex text-[11px]">
                   <span className="flex-1 truncate text-ink">{tileLabel(t)}</span>
-                  <span className="w-10 text-right font-mono font-medium text-ink">{Math.ceil(t.tiles * ORDER_BUFFER)}</span>
+                  <span className="w-10 text-right font-mono font-medium text-ink">{orderQuantity(t.tiles)}</span>
+                </div>
+              ))}
+              {boxes.map((b) => (
+                <div key={b.key} className="flex text-[11px]">
+                  <span className="flex-1 truncate text-ink-secondary">
+                    {sizeLabel(b.tile)} · {b.perBox}/box
+                  </span>
+                  <span className="text-right font-mono font-medium text-ink">{b.boxes.boxes} boxes</span>
                 </div>
               ))}
             </div>

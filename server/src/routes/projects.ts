@@ -48,13 +48,14 @@ router.post(
   '/',
   validate(CreateProjectSchema),
   asyncHandler(async (req: Request, res: Response) => {
-    const { name, room, tileConfig, plan } = req.body;
+    const { name, room, tileConfig, plan, boxes } = req.body;
 
     const project = await prisma.project.create({
       data: {
         name,
         // Prisma needs DbNull, not JS null, to store SQL NULL in a Json column.
         plan: plan ?? Prisma.DbNull,
+        boxes: boxes ?? Prisma.DbNull,
         room: { create: room },
         tileConfig: { create: tileConfig },
       },
@@ -71,7 +72,7 @@ router.put(
   '/:id',
   validate(UpdateProjectSchema),
   asyncHandler(async (req: Request, res: Response) => {
-    const { name, room, tileConfig, plan } = req.body;
+    const { name, room, tileConfig, plan, boxes } = req.body;
 
     const project = await prisma.project.update({
       where: { id: req.params.id },
@@ -79,6 +80,7 @@ router.put(
         ...(name && { name }),
         // Explicit null clears a plan (back to one room); omitted leaves it.
         ...(plan !== undefined && { plan: plan ?? Prisma.DbNull }),
+        ...(boxes !== undefined && { boxes: boxes ?? Prisma.DbNull }),
         ...(room && {
           room: {
             upsert: {

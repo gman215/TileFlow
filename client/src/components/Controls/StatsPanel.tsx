@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { useTileFlowStore } from '../../store/tileFlowStore';
-import { ORDER_BUFFER } from '../../api/ai';
+import { orderQuantity } from '../../api/ai';
 import { formatArea, formatWaste } from '../../utils/measurements';
 import { useAiAvailability } from '../../hooks/useAiAvailability';
 import BriefPanel from '../AI/BriefPanel';
+import CutListPanel from './CutListPanel';
+import SetOutSheet from '../Print/SetOutSheet';
+import { boxesFor, productKey } from '../../utils/boxes';
 
 
 // Shared translucent-dark surface for canvas-floating chrome (the brief drawer
@@ -41,7 +44,10 @@ export default function StatsPanel() {
   const system = useTileFlowStore((s) => s.system);
   const isComputing = useTileFlowStore((s) => s.isComputing);
   const computeTimeMs = useTileFlowStore((s) => s.computeTimeMs);
-  const [briefOpen, setBriefOpen] = useState(false);
+  const perBox = useTileFlowStore((s) => s.boxSizes[productKey(s.tileConfig)]);
+  // One drawer at a time on the right: the brief or the cut list.
+  const [drawerOpen, setDrawerOpen] = useState<'brief' | 'cuts' | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const { configured, loading, reason } = useAiAvailability();
 
   // Why the Brief button is off, or null when it is on (004 AC-4.1, AC-4.5). A
@@ -59,7 +65,7 @@ export default function StatsPanel() {
 
   const briefButton = (
     <button
-      onClick={() => setBriefOpen(true)}
+      onClick={() => setDrawerOpen('brief')}
       disabled={briefBlocked !== null}
       title={briefBlocked ?? 'A setting-out brief for the installer, from these figures'}
       className="rounded-md border border-white/15 px-2 py-0.5 text-[11px] font-medium text-white/85 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
@@ -67,7 +73,40 @@ export default function StatsPanel() {
       Brief
     </button>
   );
-  const drawer = briefOpen && <BriefPanel onClose={() => setBriefOpen(false)} />;
+  const cutsButton = (
+    <button
+      onClick={() => setDrawerOpen(drawerOpen === 'cuts' ? null : 'cuts')}
+      disabled={!layout}
+      title={layout ? 'Every cut piece, measured and labelled' : 'No layout yet.'}
+      className="rounded-md border border-white/15 px-2 py-0.5 text-[11px] font-medium text-white/85 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+    >
+      Cuts
+    </button>
+  );
+  const printButton = (
+    <button
+      onClick={() => setSheetOpen(true)}
+      disabled={!layout || isComputing}
+      title={!layout ? 'No layout yet.' : isComputing ? 'Wait for the layout to finish computing.' : 'Set-out sheet to print or save as PDF'}
+      className="rounded-md border border-white/15 px-2 py-0.5 text-[11px] font-medium text-white/85 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+    >
+      Print
+    </button>
+  );
+  const sheet = sheetOpen && <SetOutSheet onClose={() => setSheetOpen(false)} />;
+  const drawer =
+    drawerOpen === 'brief' ? (
+      <BriefPanel onClose={() => setDrawerOpen(null)} />
+    ) : drawerOpen === 'cuts' ? (
+      <CutListPanel onClose={() => setDrawerOpen(null)} />
+    ) : null;
+  // The sheet rides with whichever drawer is (or isn't) open.
+  const overlays = (
+    <>
+      {drawer}
+      {sheet}
+    </>
+  );
 
   if (!layout) {
     return (
@@ -79,7 +118,7 @@ export default function StatsPanel() {
           {isComputing ? 'Computing…' : 'No layout computed yet.'}
           {briefButton}
         </div>
-        {drawer}
+        {overlays}
       </>
     );
   }
@@ -87,7 +126,9 @@ export default function StatsPanel() {
   const totalTiles = layout.fullTileCount + layout.cutTileCount;
   // Shared with statsDto() so the figure shown here and the figure a model is
   // told are the same number.
-  const buyCount = Math.ceil(totalTiles * ORDER_BUFFER);
+  const buyCount = orderQuantity(totalTiles);
+  // 012 AC-3.2 — the same order, in boxes, once the box size is known.
+  const box = boxesFor(buyCount, perBox);
   // Shared with statsDto() for the same reason.
   const roomAreaDisplay = formatArea(layout.roomArea, system);
 
@@ -113,13 +154,18 @@ export default function StatsPanel() {
       >
         <span>
           <span className="font-mono font-medium">{buyCount}</span> to buy
+          {box && (
+            <span className="text-white/60">
+              {' '}· <span className="font-mono">{box.boxes}</span> {box.boxes === 1 ? 'box' : 'boxes'}
+            </span>
+          )}
         </span>
         <span style={{ color: wasteColor }}>
           <span className="font-mono">{formatWaste(waste)}</span> waste
         </span>
         <span className="text-white/50">▴</span>
       </button>
-      {drawer}
+      {overlays}
       </>
     );
   }
@@ -147,6 +193,16 @@ export default function StatsPanel() {
           <div className="mt-1.5 text-[11px] text-white/55">
             Order to buy (incl. 10%)
           </div>
+          {box && (
+            <div
+              className="mt-0.5 text-[11px] text-white/80"
+              title={`${perBox} per box · ${box.tiles} tiles in ${box.boxes} boxes`}
+            >
+              <span className="font-mono font-medium">{box.boxes}</span> {box.boxes === 1 ? 'box' : 'boxes'} ·{' '}
+              <span className="font-mono">{box.tiles}</span> tiles
+              {box.spare > 0 && <span className="text-white/50"> ({box.spare} spare)</span>}
+            </div>
+          )}
         </div>
         <div>
           <div
@@ -172,10 +228,14 @@ export default function StatsPanel() {
             </span>
           </React.Fragment>
         ))}
-        <span className="ml-auto pl-2">{briefButton}</span>
+        <span className="ml-auto flex gap-1.5 pl-2">
+          {cutsButton}
+          {printButton}
+          {briefButton}
+        </span>
       </div>
     </div>
-    {drawer}
+    {overlays}
     </>
   );
 }

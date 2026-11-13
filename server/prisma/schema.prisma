@@ -23,6 +23,9 @@ model Project {
   /// Floor plan (008): walls, assemblies, rooms, pattern groups. Null = single room.
   /// Room and TileConfig still hold the active room, so lists and older clients work.
   plan Json?
+
+  /// Pieces per box by tile product, e.g. {"304.8x609.6": 8} (012). Null = not entered.
+  boxes Json?
 }
 
 model Room {

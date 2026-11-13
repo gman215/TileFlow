@@ -55,6 +55,15 @@ const BASE = '/api/ai';
  */
 export const ORDER_BUFFER = 1.1;
 
+/**
+ * Tiles to order for `tiles` placed: +10 %, rounded up. Done in integers —
+ * `Math.ceil(100 * 1.1)` is 111, because 100 × 1.1 is 110.00000000000001 in
+ * floating point, which over-ordered every multiple of ten by one tile.
+ */
+export function orderQuantity(tiles: number): number {
+  return Math.ceil((tiles * Math.round(ORDER_BUFFER * 100)) / 100);
+}
+
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
 /** The server's stable `code`, so callers can tell "retry" from "never works". */
@@ -166,8 +175,16 @@ export async function* streamText(
  * size so an installer can tell it is "the tub", and which part of it — in the
  * user's units, formatted by the sidebar's helpers. Null when the layout is set
  * out from the room or its reference wall.
+ *
+ * `islandsBefore` — free-standing islands listed ahead of the drawn cut-outs
+ * in a plan room's layout; defaults to the active room's (the set-out sheet
+ * passes each room's own).
  */
-function describeAnchor(room: ReturnType<typeof useTileFlowStore.getState>['room'], sys: MeasurementSystem): string | null {
+export function describeAnchor(
+  room: ReturnType<typeof useTileFlowStore.getState>['room'],
+  sys: MeasurementSystem,
+  islandsBefore?: number
+): string | null {
   const a = room.shape?.anchor ?? room.anchor;
   if (!a) return null;
   const d = roomDisplay(sys);
@@ -176,7 +193,8 @@ function describeAnchor(room: ReturnType<typeof useTileFlowStore.getState>['room
   const st = useTileFlowStore.getState();
   // In a plan, the layout room lists free-standing islands before drawn cut-outs.
   const pr = st.plan && st.activeRoomId ? st.plan.rooms.find((r) => r.id === st.activeRoomId) : undefined;
-  const islands = pr && st.activeRoomId ? (st.derived?.rooms.get(st.activeRoomId)?.holes.length ?? 0) - pr.holes.length : 0;
+  const islands =
+    islandsBefore ?? (pr && st.activeRoomId ? (st.derived?.rooms.get(st.activeRoomId)?.holes.length ?? 0) - pr.holes.length : 0);
   const hole = room.shape?.holes[a.hole];
   if (!hole) return null;
   const xs = hole.vertices.map((v) => v.x), ys = hole.vertices.map((v) => v.y);
@@ -350,7 +368,7 @@ export function statsDto(): LayoutStatsDTO | null {
 
   const summary = summarizeShape(room.shape ?? rectShape(room.width, room.height));
   const totalTiles = layout.fullTileCount + layout.cutTileCount;
-  const orderQuantity = Math.ceil(totalTiles * ORDER_BUFFER);
+  const orderQty = orderQuantity(totalTiles);
   const sys = system as MeasurementSystem;
   const room_ = roomDisplay(sys);
   const tile_ = tileDisplay(sys);
@@ -384,7 +402,7 @@ export function statsDto(): LayoutStatsDTO | null {
       wastePercentage: layout.wastePercentage,
       smallestCutPieceMm2: layout.smallestCutPiece,
       roomAreaMm2: layout.roomArea,
-      orderQuantity,
+      orderQuantity: orderQty,
     },
     // Formatted exactly as the sidebar and stats card format them, by the same
     // helpers — the strings a model is allowed to say out loud.
@@ -393,7 +411,7 @@ export function statsDto(): LayoutStatsDTO | null {
       area: formatArea(layout.roomArea, sys),
       tileSize: `${formatWithUnit(tileConfig.width, tile_)} × ${formatWithUnit(tileConfig.height, tile_)}`,
       grout: formatWithUnit(tileConfig.grout, groutDisplay(sys)),
-      orderQuantity: String(orderQuantity),
+      orderQuantity: String(orderQty),
       waste: formatWaste(layout.wastePercentage),
       fullTiles: String(layout.fullTileCount),
       cutTiles: String(layout.cutTileCount),

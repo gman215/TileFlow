@@ -63,3 +63,16 @@ export {
 // Floor plans (walls, assemblies, derived rooms, pattern groups)
 export * from './plan';
 export * from './framing';
+
+// Cut list and set-out lines (012)
+export {
+  cutPieces,
+  groupCuts,
+  cutLabel,
+  setOutLines,
+  type CutKind,
+  type CutPiece,
+  type CutGroup,
+  type SetOut,
+  type SetOutLine,
+} from './cuts';

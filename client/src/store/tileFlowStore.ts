@@ -101,6 +101,7 @@ export const CANVAS_MIN_WIDTH = 480;
 const RESIZER_WIDTH = 6;
 const SIDEBAR_WIDTH_KEY = 'tileflow.sidebarWidth';
 const SIDEBAR_HIDDEN_KEY = 'tileflow.sidebarHidden';
+const CUT_LABELS_KEY = 'tileflow.cutLabels';
 
 /** 260–560 px, and never so wide the canvas drops below 480 px (011 AC-1.1). */
 export function clampSidebarWidth(px: number): number {
@@ -267,11 +268,26 @@ export interface TileFlowState {
   setEstimatePrice: (key: EstimatePriceKey, value: number | null) => void;
   setEstimateTileUnit: (unit: 'tile' | 'area') => void;
   setEstimateCurrency: (symbol: string) => void;
+  /**
+   * 012 — pieces per box, keyed by `productKey(tile)`. A product fact, not an
+   * edit, so outline undo/redo leaves it alone (AC-3.4); saved with the project.
+   */
+  boxSizes: Record<string, number>;
+  setBoxSize: (key: string, pieces: number | null) => void;
   /** 011 — sidebar width in px (clamped; persisted per browser) and whether it is hidden */
   sidebarWidth: number;
   sidebarHidden: boolean;
   setSidebarWidth: (px: number) => void;
   toggleSidebar: () => void;
+  /** 012 AC-1.6 — each cut piece's letter on the canvas (per browser; off by default) */
+  showCutLabels: boolean;
+  setShowCutLabels: (on: boolean) => void;
+  /**
+   * 012 AC-2.5 — the last brief that finished, and the layout object it was
+   * written for. The sheet prints it only while `layout` is still that object.
+   */
+  lastBrief: { text: string; layout: LayoutResult } | null;
+  setLastBrief: (brief: { text: string; layout: LayoutResult } | null) => void;
   /** Record the current state; called before the assistant applies a turn's calls */
   captureAiSnapshot: () => void;
   /** Restore the recorded state and clear it */
@@ -997,6 +1013,13 @@ export const useTileFlowStore = create<TileFlowState>()(
       writePref(SIDEBAR_WIDTH_KEY, width);
       set({ sidebarWidth: width });
     },
+    showCutLabels: readPref(CUT_LABELS_KEY, 0) === 1,
+    setShowCutLabels: (on) => {
+      writePref(CUT_LABELS_KEY, on ? 1 : 0);
+      set({ showCutLabels: on });
+    },
+    lastBrief: null,
+    setLastBrief: (brief) => set({ lastBrief: brief }),
     toggleSidebar: () => {
       const hidden = !get().sidebarHidden;
       writePref(SIDEBAR_HIDDEN_KEY, hidden ? 1 : 0);
@@ -1026,6 +1049,14 @@ export const useTileFlowStore = create<TileFlowState>()(
       });
     },
     setEstimateCurrency: (symbol) => set({ estimateCurrency: symbol }),
+    boxSizes: {},
+    setBoxSize: (key, pieces) =>
+      set((s) => {
+        const next = { ...s.boxSizes };
+        if (pieces && pieces >= 1) next[key] = Math.round(pieces);
+        else delete next[key];
+        return { boxSizes: next };
+      }),
 
     // Layout assistant undo (003)
     aiSnapshot: null,
