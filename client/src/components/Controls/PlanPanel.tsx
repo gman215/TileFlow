@@ -3,8 +3,9 @@ import type { LocationLine } from '@tileflow/geometry';
 import { polygonArea, polygonPerimeter, totalThickness, IMPERIAL_ASSEMBLY_IDS, METRIC_ASSEMBLY_IDS } from '@tileflow/geometry';
 import { useTileFlowStore } from '../../store/tileFlowStore';
 import { tileTotals } from '../../store/planHelpers';
+import { productBoxes } from '../../utils/boxes';
 import { formatDisplayFromMM, groutDisplay, roomDisplay, tileDisplay } from '../../utils/measurements';
-import { ORDER_BUFFER } from '../../api/ai';
+import { orderQuantity } from '../../api/ai';
 import DimensionField from './DimensionField';
 import InfoTip from './InfoTip';
 
@@ -345,13 +346,14 @@ export default function PlanPanel() {
             <div key={t.label} className="rounded-md bg-[#F0EFEB] px-2 py-1 text-[11px]">
               <div className="flex justify-between text-ink">
                 <span className="truncate">{t.label}</span>
-                <span className="font-mono font-medium">{Math.ceil(t.tiles * ORDER_BUFFER)}</span>
+                <span className="font-mono font-medium">{orderQuantity(t.tiles)}</span>
               </div>
               <div className="text-[10px] text-ink-muted">
                 {t.rooms.join(', ')} · {t.tiles} tiles · {t.cuts} cut · {area(t.area)}
               </div>
             </div>
           ))}
+          <ProjectBoxes rows={totals} fmt={(mm) => formatDisplayFromMM(mm, tileDims.unit, tileDims.imperialFormat)} />
         </div>
       )}
 
@@ -360,6 +362,37 @@ export default function PlanPanel() {
         <span className="font-medium text-ink-secondary">Read a plan</span> — Floor-plan mode reads one
         room at a time — coming in a later spec.
       </p>
+    </div>
+  );
+}
+
+/** 012 AC-3.3 — boxes per tile product across the plan, on the combined order. */
+function ProjectBoxes({
+  rows,
+  fmt,
+}: {
+  rows: { tileConfig: { width: number; height: number }; tiles: number }[];
+  fmt: (mm: number) => string;
+}) {
+  const boxSizes = useTileFlowStore((s) => s.boxSizes);
+  const products = productBoxes(
+    rows.map((r) => ({ tileConfig: r.tileConfig, order: orderQuantity(r.tiles) })),
+    boxSizes
+  );
+  if (products.length === 0) return null;
+  return (
+    <div className="space-y-0.5">
+      {products.map((p) => (
+        <div key={p.key} className="flex justify-between rounded-md bg-[#E8F0EC] px-2 py-1 text-[11px] text-ink">
+          <span className="truncate">
+            {fmt(p.tile.width)} × {fmt(p.tile.height)} · {p.perBox}/box
+          </span>
+          <span>
+            <span className="font-mono font-medium">{p.boxes.boxes}</span> boxes{' '}
+            <span className="text-[10px] text-ink-muted">({p.boxes.tiles} tiles)</span>
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

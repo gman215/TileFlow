@@ -19,6 +19,7 @@ export function useProjectActions() {
   const optimizationConfig = useTileFlowStore((s) => s.optimizationConfig);
   const alignment = useTileFlowStore((s) => s.alignment);
   const plan = useTileFlowStore((s) => s.plan);
+  const boxSizes = useTileFlowStore((s) => s.boxSizes);
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -52,6 +53,8 @@ export function useProjectActions() {
         // In a plan, room/tileConfig above are the active room's; the plan is
         // the source of truth. null clears a plan the project used to have.
         plan: plan ?? null,
+        // 012 — pieces per box per tile product; null clears an old value.
+        boxes: Object.keys(boxSizes).length > 0 ? boxSizes : null,
       };
 
       if (projectId) {
@@ -89,6 +92,9 @@ export function useProjectActions() {
       }
       setProjectId(latest.id);
       setProjectName(latest.name);
+
+      // A project saved before 012 has no box sizes: tiles only (AC-3.4).
+      useTileFlowStore.setState({ boxSizes: validBoxes(latest.boxes) });
 
       const store0 = useTileFlowStore.getState();
       if (latest.plan) {
@@ -164,4 +170,14 @@ export function useProjectActions() {
     handleSave,
     handleLoad,
   };
+}
+
+/** Keep only well-formed entries — a stored value is still outside input. */
+function validBoxes(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (/^\d+(\.\d)?x\d+(\.\d)?$/.test(k) && typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 10000) out[k] = v;
+  }
+  return out;
 }

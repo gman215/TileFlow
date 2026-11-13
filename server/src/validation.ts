@@ -235,6 +235,11 @@ export const CreateProjectSchema = z.object({
   tileConfig: TileConfigSchema,
   /** Omitted or null for a single-room project */
   plan: PlanSchema.nullish(),
+  /** 012 — pieces per box, keyed by tile product ("300x600"); null clears */
+  boxes: z
+    .record(z.string().regex(/^\d+(\.\d)?x\d+(\.\d)?$/), z.number().int().min(1).max(10000))
+    .refine((r) => Object.keys(r).length <= 50, 'At most 50 box sizes')
+    .nullish(),
 });
 
 export const UpdateProjectSchema = CreateProjectSchema.partial();

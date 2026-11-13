@@ -46,7 +46,7 @@ other and can be built in any order; the order below is by demo impact.
 | 010 | [ux-onboarding](010-ux-onboarding/) | `feat/010-ux-onboarding` | **Complete (10/10)** — Start card & examples, one-gesture rooms, auto-rooms, toolbar & shortcuts, instruction line, stepped sidebar | — | — |
 | 009 | [wall-framing](009-wall-framing/) | `feat/009-wall-framing` | **Complete (14/14)** — studs, openings, junction backing, takeoff, elevations; verified in browser and against Postgres | — | — |
 | 011 | [layout-control](011-layout-control/) | `feat/011-layout-control` | **Complete (13/13)** — resizable sidebar, edit a wall's length on the wall, centre the layout on a feature (cut-out centre or edge, or a point) with full tiles from an edge; verified in the browser and against Postgres | — | — |
-| 012 | installer-output *(proposed)* | — | Proposed — dimensioned cut list, printable set-out sheet PDF, order by the box | — | — |
+| 012 | [installer-output](012-installer-output/) | `feat/012-installer-output` | **Complete (8/8)** — dimensioned cut list (drawer, CSV, letters on the plan), printable set-out sheet with dimensioned start lines (PDF via the browser), order by the box; verified in the browser and against Postgres | — | — |
 | 013 | patterns-and-shapes *(proposed)* | — | Proposed — basketweave, chevron, windmill, Versailles, hexagon, checkerboard, ¼ offset, random plank; 33 % plank-offset warning | — | — |
 | 014 | wall-tiling *(proposed)* | — | Proposed — showers, tub surrounds, backsplashes as tiled elevations with openings | — | — |
 | 015 | ordering-accuracy *(proposed)* | — | Proposed — choosable buffer, offcut reuse, attic stock, boxes across surfaces | — | — |
@@ -66,7 +66,7 @@ auto-deploys the live demo, so it stays clean.
 ## Next: from the competitive analysis
 
 See [`COMPETITIVE-ANALYSIS.md`](COMPETITIVE-ANALYSIS.md) — 11 competing tools compared for tile
-installation. Recommended order: 011 → 012 → 013 → 014 → 015 → 016 → 017 → 018 → 019.
+installation. Recommended order: 011 → 012 → 013 → 014 → 015 → 016 → 017 → 018 → 019. 011 and 012 are done.
 
 ## Feature summaries
 

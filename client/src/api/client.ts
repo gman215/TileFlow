@@ -41,6 +41,8 @@ export interface ProjectDTO {
   } | null;
   /** Floor plan (008); null or absent for a single-room project */
   plan?: Plan | null;
+  /** 012 — pieces per box by tile product; absent on older projects */
+  boxes?: Record<string, number> | null;
 }
 
 export const api = {
@@ -69,6 +71,7 @@ export const api = {
     alignment?: 'optimize' | 'center-tile' | 'center-grout';
     };
     plan?: Plan | null;
+    boxes?: Record<string, number> | null;
   }) =>
     request<ProjectDTO>('/projects', {
       method: 'POST',
@@ -98,6 +101,7 @@ export const api = {
     alignment?: 'optimize' | 'center-tile' | 'center-grout';
       };
       plan: Plan | null;
+      boxes: Record<string, number> | null;
     }>
   ) =>
     request<ProjectDTO>(`/projects/${id}`, {

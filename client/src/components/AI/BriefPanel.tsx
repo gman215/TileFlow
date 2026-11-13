@@ -70,6 +70,10 @@ export default function BriefPanel({ onClose }: { onClose: () => void }) {
 
     const request = buildBriefRequest();
     if (!request) return; // the Brief button is disabled without a layout
+    // The layout object this brief describes. The set-out sheet prints the
+    // brief only while the screen still shows this very object (012 AC-2.5).
+    const layoutAtRequest = useTileFlowStore.getState().layout;
+    let full = '';
     signatureRef.current = layoutSignature();
     setStale(false);
     setError(null);
@@ -87,10 +91,16 @@ export default function BriefPanel({ onClose }: { onClose: () => void }) {
           setText('');
           setDemo(demoMode);
         }
+        full += chunk;
         setText((t) => t + chunk);
       }
       if (!aliveRef.current || controller.signal.aborted) return;
       setStatus(received ? 'done' : 'incomplete');
+      // Only a complete brief written for this layout; demo mode's canned text
+      // describes no layout in particular.
+      if (received && !demoMode && layoutAtRequest) {
+        useTileFlowStore.getState().setLastBrief({ text: full, layout: layoutAtRequest });
+      }
     } catch (err) {
       // Stopped by us (close, unmount, regenerate): no state update (AC-3.3).
       if (err instanceof DOMException && err.name === 'AbortError') return;

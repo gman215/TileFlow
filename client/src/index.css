@@ -85,3 +85,59 @@
     @apply bg-ink text-white border-ink;
   }
 }
+
+/* ── 012 set-out sheet ─────────────────────────────────────────────────────
+   The sheet is portalled next to #root. On screen it is a preview over the
+   app; in print it is the only thing on the paper (AC-2.7). Page size is
+   injected by the sheet itself (A4 or Letter, landscape). */
+.sheet-page {
+  background: #fff;
+  color: #1c1917;
+  box-shadow: 0 2px 18px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.sheet-brief strong,
+.sheet-brief h4,
+.sheet-brief div,
+.sheet-brief p,
+.sheet-brief li {
+  color: #1c1917 !important;
+}
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+  #root {
+    display: none !important;
+  }
+  .print-root {
+    position: static !important;
+    inset: auto !important;
+    overflow: visible !important;
+    background: none !important;
+    padding: 0 !important;
+  }
+  .print-chrome {
+    display: none !important;
+  }
+  .sheet-stack {
+    gap: 0 !important;
+    padding: 0 !important;
+  }
+  .sheet-page {
+    box-shadow: none;
+    margin: 0;
+    break-after: page;
+    page-break-after: always;
+  }
+  .sheet-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  .sheet-page.sheet-flow {
+    height: auto !important;
+    overflow: visible;
+  }
+}

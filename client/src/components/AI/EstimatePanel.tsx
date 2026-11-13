@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { EstimateDTO } from '@api/_lib/types';
 import { useTileFlowStore, type EstimatePriceKey } from '../../store/tileFlowStore';
 import { useAiAvailability } from '../../hooks/useAiAvailability';
-import { ai, AiError, buildEstimateRequest, ORDER_BUFFER } from '../../api/ai';
+import { ai, AiError, buildEstimateRequest, orderQuantity } from '../../api/ai';
 import {
   buildEstimateView,
   effectivePrices,
@@ -99,7 +99,7 @@ export default function EstimatePanel() {
         : !configured
           ? reason
           : null;
-  const stale = result !== null && layout !== null && result.orderQuantity !== Math.ceil((layout.fullTileCount + layout.cutTileCount) * ORDER_BUFFER);
+  const stale = result !== null && layout !== null && result.orderQuantity !== orderQuantity(layout.fullTileCount + layout.cutTileCount);
 
   async function estimate() {
     abortRef.current?.abort();
